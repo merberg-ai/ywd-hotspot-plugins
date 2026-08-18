@@ -1,0 +1,29 @@
+{
+  "schema": 1,
+  "fields": [
+    {
+      "key": "label",
+      "type": "string",
+      "label": "Test message",
+      "default": "Uploaded YWD plugin is alive",
+      "max_length": 80,
+      "help": "Printed to the plugin journal on every heartbeat."
+    },
+    {
+      "key": "interval_s",
+      "type": "integer",
+      "label": "Heartbeat interval (seconds)",
+      "default": 15,
+      "min": 10,
+      "max": 300,
+      "help": "Restart the plugin after changing this value."
+    },
+    {
+      "key": "show_counter",
+      "type": "boolean",
+      "label": "Show heartbeat counter",
+      "default": true,
+      "help": "Adds an incrementing counter to each journal heartbeat."
+    }
+  ]
+}
