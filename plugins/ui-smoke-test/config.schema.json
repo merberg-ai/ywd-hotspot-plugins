@@ -1,0 +1,19 @@
+{
+  "schema": 1,
+  "fields": [
+    {
+      "key": "label",
+      "type": "string",
+      "label": "Test message",
+      "default": "Sandbox bridge is alive",
+      "max_length": 80,
+      "help": "Displayed only inside the sandboxed plugin UI."
+    },
+    {
+      "key": "show_details",
+      "type": "boolean",
+      "label": "Show bridge details",
+      "default": true
+    }
+  ]
+}
