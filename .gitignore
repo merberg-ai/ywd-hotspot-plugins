@@ -1,0 +1,17 @@
+# Local build output
+dist/
+*.ywdplugin
+
+# Private signing keys / SSH keys
+*.pem
+*.key
+id_*
+ywd-plugin-private*
+
+# Editor / OS noise
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+__pycache__/
+*.pyc
