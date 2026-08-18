@@ -1,0 +1,23 @@
+{
+  "api": 1,
+  "id": "upload-smoke-test",
+  "name": "Uploaded Plugin Smoke Test",
+  "version": "1.0.0",
+  "description": "Harmless sandboxed service used to exercise the YWD-Hotspot uploaded plugin lifecycle.",
+  "trust": "experimental",
+  "kind": "service",
+  "provider": "sandboxed-service",
+  "capabilities": [
+    "service:lifecycle",
+    "read:journal"
+  ],
+  "rf_mode": false,
+  "entrypoint": "service.py",
+  "config_schema": "config.schema.json",
+  "dependencies": [
+    "python3",
+    "systemd",
+    "journalctl"
+  ],
+  "hardware": []
+}
