@@ -80,7 +80,7 @@ plugin.getState
 plugin.getConfig
 ```
 
-Use `plugins/ui-smoke-test` to validate this framework before adding richer plugin capabilities.
+Phase 1 intentionally contains no DMR voice-frame/audio capability. `plugins/ui-smoke-test` validates only the generic signed UI package, navigation, isolation, configuration and bridge lifecycle before the Monitor-specific `read:dmr-voice` work begins.
 
 ## Test sequence
 
