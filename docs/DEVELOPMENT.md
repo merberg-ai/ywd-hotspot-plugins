@@ -42,6 +42,8 @@ The script keeps local developer settings under:
 
 and generated signing keys under a sibling `keys/<key-id>/` directory there by default. It refuses to create signing keys inside either Git repository.
 
+**Generate and retain private publisher keys on a development workstation, not on the YWD-Hotspot appliance.** The hotspot receives only the matching public key under `/etc/ywd-hotspot/plugin-trust.d/<key-id>.pem`. Treat the private key as release-signing material and keep it out of both repositories, backups intended for the hotspot, and diagnostic bundles.
+
 ## Direct builder use
 
 An unsigned declarative package may still be built directly:
