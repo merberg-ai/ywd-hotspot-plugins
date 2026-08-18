@@ -8,7 +8,7 @@ Keep both repositories beside each other on a development machine:
 
 ```text
 ~/src/ywd-hotspot/
-~/src/ywd-modem-plugins/
+~/src/ywd-hotspot-plugins/
 ```
 
 Build an unsigned declarative package with the canonical core tool:
