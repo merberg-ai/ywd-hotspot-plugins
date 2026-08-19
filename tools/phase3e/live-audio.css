@@ -14,7 +14,7 @@
 .rx-audio-volume span{color:#62e9ff;font-size:10px}
 .rx-audio-mute{justify-content:end;padding-bottom:8px}
 .rx-audio-mute input{accent-color:#62e9ff}
-.rx-audio-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px}
+.rx-audio-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(105px,1fr));gap:8px}
 .rx-audio-grid article{border:1px solid #173944;background:#051017;border-radius:9px;padding:10px;min-width:0}
 .rx-audio-value{margin-top:5px;color:#d8edf2;font-size:14px;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .rx-audio-route{margin-top:10px;border-top:1px solid #17333d;padding-top:9px;color:#62e9ff;font-size:11px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
