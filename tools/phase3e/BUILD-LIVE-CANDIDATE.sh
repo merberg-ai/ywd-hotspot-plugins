@@ -9,7 +9,7 @@ DECODER="$PHASE3D/generated/ywd-mbelib.js"
 STAGE_ROOT="$HERE/stage"
 STAGE="$STAGE_ROOT/dmr-rx-monitor"
 DIST="$ROOT/dist"
-VERSION="0.4.0-alpha1"
+VERSION="0.4.0-alpha2"
 CONFIG_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/ywd-hotspot-plugins/build.json"
 DEFAULT_CORE="$(cd "$ROOT/.." && pwd)/ywd-hotspot"
 MAX_UI_JS=$((256 * 1024))
@@ -61,7 +61,7 @@ stage=pathlib.Path(sys.argv[1]); version=sys.argv[2]
 manifest_path=stage/'plugin.json'
 manifest=json.loads(manifest_path.read_text())
 manifest['version']=version
-manifest['description']='Passive DMR receive monitor with live browser-side AMBE+2 decode, jitter-buffered Web Audio playback, FEC diagnostics, and bounded capture export. No direct RF, serial, MQTT, or network access.'
+manifest['description']='Passive DMR receive monitor with live browser-side AMBE+2 decode, adaptive audio polling, jitter-buffered Web Audio playback, FEC diagnostics, and bounded capture export. No direct RF, serial, MQTT, or network access.'
 manifest_path.write_text(json.dumps(manifest, indent=2) + '\n')
 
 ui_path=stage/'ui.js'
@@ -71,6 +71,13 @@ if ui.count(needle) != 1:
     raise SystemExit('RX Monitor ui.js hook point changed; expected exactly one pushCapture call')
 hook="""        pushCapture(frame, recovered, index);\n        if (typeof window.ywdRxAudioFrame === 'function') {\n          try {\n            window.ywdRxAudioFrame({\n              path: frame.source,\n              slot: Number(frame.slot),\n              src: Number(frame.src_id),\n              dst: Number(frame.dst_id),\n              group: !!frame.group,\n              burst_seq: Number(frame.seq),\n              dmr_seq: Number(frame.seq_no),\n              n: Number(frame.n),\n              index,\n              ambe49: recovered.hex,\n              fec: recovered.corrected\n            });\n          } catch (_) {}\n        }"""
 ui=ui.replace(needle, hook)
+
+poll_needle='      pollTimer = setTimeout(poll, 250);'
+if ui.count(poll_needle) != 1:
+    raise SystemExit('RX Monitor poll hook point changed; expected exactly one 250 ms success poll')
+poll_hook="""      const requestedPollMs = typeof window.ywdRxPollIntervalMs === 'function'\n        ? Number(window.ywdRxPollIntervalMs())\n        : 250;\n      pollTimer = setTimeout(poll, Math.max(75, Math.min(1000, requestedPollMs || 250)));"""
+ui=ui.replace(poll_needle, poll_hook)
+
 ui=ui.replace("version:'0.3.0'", f"version:'{version}'")
 ui=ui.replace('PHASE 3B · 49-BIT AMBE+2 FRAME RECOVERY', 'PHASE 3B/3E · AMBE+2 RECOVERY + LIVE AUDIO')
 ui=ui.replace('Browser-side FEC, de-scrambling, continuity diagnostics, and bounded capture export. Still no audio decoding.', 'Browser-side FEC, de-scrambling, continuity diagnostics, capture export, and live-audio handoff.')
@@ -128,5 +135,6 @@ echo "     plugin : dmr-rx-monitor v$VERSION"
 echo "     output : $OUT"
 echo "     core   : $CORE"
 echo
-echo "Before testing on the hotspot, update core dev-plugins to Alpha22.2 so the"
-echo "read:dmr-voice sandbox receives the scoped WebAssembly CSP allowance."
+echo "For the paired test baseline, update core dev-plugins to Alpha22.4."
+echo "Alpha22.4 carries the proven Alpha22.3 voice-bridge pacing behavior unchanged."
+echo "START AUDIO then requests 100 ms RX polling; STOP AUDIO returns to 250 ms."
