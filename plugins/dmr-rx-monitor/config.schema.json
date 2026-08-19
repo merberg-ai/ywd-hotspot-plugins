@@ -20,16 +20,36 @@
     {
       "key": "show_ambe_hex",
       "type": "boolean",
-      "label": "Show AMBE channel blocks",
+      "label": "Show coded AMBE channel blocks",
       "default": false,
-      "help": "Show the three de-interleaved 72-bit coded AMBE+2 channel/FEC blocks extracted from the most recent DMR voice burst."
+      "help": "Show the three most recent 72-bit coded AMBE+2 channel/FEC blocks."
+    },
+    {
+      "key": "show_vocoder_hex",
+      "type": "boolean",
+      "label": "Show recovered 49-bit frames",
+      "default": false,
+      "help": "Show the three most recent recovered 49-bit AMBE+2 vocoder frames and FEC correction counts."
+    },
+    {
+      "key": "capture_seconds",
+      "type": "integer",
+      "label": "Capture ring seconds",
+      "default": 10,
+      "min": 5,
+      "max": 20,
+      "help": "Approximate amount of recovered AMBE frame history kept in the browser for Export Capture. The ring is bounded and never written to the Pi."
     },
     {
       "key": "source_filter",
       "type": "select",
       "label": "Frame source",
       "default": "all",
-      "options": ["all", "rf", "network"],
+      "options": [
+        "all",
+        "rf",
+        "network"
+      ],
       "help": "Show both directions or only RF / network frames."
     }
   ]
