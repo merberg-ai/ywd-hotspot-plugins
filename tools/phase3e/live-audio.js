@@ -3,11 +3,15 @@
   const SAMPLE_RATE = 8000;
   const SAMPLES_PER_FRAME = 160;
   const FRAME_MS = 20;
+  const CHUNK_FRAMES = 5;
+  const CHUNK_MS = FRAME_MS * CHUNK_FRAMES;
+  const CHUNK_SAMPLES = SAMPLES_PER_FRAME * CHUNK_FRAMES;
   const DEFAULT_BUFFER_MS = 160;
   const CALL_GAP_MS = 500;
-  const AUTO_LOCK_GAP_MS = 900;
+  const AUTO_LOCK_GAP_MS = 450;
   const AUDIO_POLL_MS = 100;
   const IDLE_POLL_MS = 250;
+  const MIN_START_LEAD_MS = 40;
 
   let mbe = null;
   let bitsPtr = 0;
@@ -17,7 +21,7 @@
   let audioRunning = false;
   let primed = false;
   let nextAudioTime = 0;
-  let pendingPcm = [];
+  let chunkFrames = [];
   let scheduledSources = new Set();
   let sourceFilter = 'network';
   let slotFilter = 'auto';
@@ -25,6 +29,7 @@
   let volume = 0.70;
   let muted = false;
   let decodedFrames = 0;
+  let decodedChunks = 0;
   let decoderErrorFrames = 0;
   let underruns = 0;
   let streamResets = 0;
@@ -139,7 +144,7 @@
 
   function resetPipeline({decoder = true, stopSources = false, unlockAuto = true} = {}) {
     if (stopSources) stopScheduledSources();
-    pendingPcm = [];
+    chunkFrames = [];
     primed = false;
     nextAudioTime = 0;
     previousKey = null;
@@ -169,7 +174,15 @@
     return pcm;
   }
 
-  function schedulePcm(pcm, when) {
+  function combineChunk(frames) {
+    const chunk = new Float32Array(CHUNK_SAMPLES);
+    for (let frameIndex = 0; frameIndex < CHUNK_FRAMES; frameIndex++) {
+      chunk.set(frames[frameIndex], frameIndex * SAMPLES_PER_FRAME);
+    }
+    return chunk;
+  }
+
+  function scheduleChunk(pcm, when) {
     const buffer = audioCtx.createBuffer(1, pcm.length, SAMPLE_RATE);
     buffer.getChannelData(0).set(pcm);
     const source = audioCtx.createBufferSource();
@@ -183,44 +196,47 @@
     source.start(when);
   }
 
-  function primeAudio() {
-    const targetFrames = Math.max(6, Math.ceil(targetBufferMs / FRAME_MS));
-    if (pendingPcm.length < targetFrames) {
-      setAudioState('BUFFERING');
-      return;
-    }
-    nextAudioTime = Math.max(audioCtx.currentTime + 0.04, nextAudioTime || 0);
-    for (const pcm of pendingPcm) {
-      schedulePcm(pcm, nextAudioTime);
-      nextAudioTime += FRAME_MS / 1000;
-    }
-    pendingPcm = [];
+  function scheduledDepthMs() {
+    if (!audioCtx || !primed) return chunkFrames.length * FRAME_MS;
+    return Math.max(0, Math.round((nextAudioTime - audioCtx.currentTime) * 1000));
+  }
+
+  function primeAndScheduleChunk(chunk) {
+    const startLeadMs = Math.max(MIN_START_LEAD_MS, targetBufferMs - CHUNK_MS);
+    nextAudioTime = Math.max(audioCtx.currentTime + (startLeadMs / 1000), nextAudioTime || 0);
+    scheduleChunk(chunk, nextAudioTime);
+    nextAudioTime += CHUNK_MS / 1000;
+    decodedChunks += 1;
     primed = true;
     setAudioState('LIVE', 'good');
   }
 
-  function enqueuePcm(pcm) {
+  function enqueueChunk(chunk) {
     if (!primed) {
-      pendingPcm.push(pcm);
-      primeAudio();
+      primeAndScheduleChunk(chunk);
       return;
     }
     if (nextAudioTime < audioCtx.currentTime + 0.005) {
       underruns += 1;
-      pendingPcm = [pcm];
       primed = false;
       nextAudioTime = 0;
       setAudioState('REBUFFER', 'warn');
+      primeAndScheduleChunk(chunk);
       return;
     }
-    schedulePcm(pcm, nextAudioTime);
-    nextAudioTime += FRAME_MS / 1000;
+    scheduleChunk(chunk, nextAudioTime);
+    nextAudioTime += CHUNK_MS / 1000;
+    decodedChunks += 1;
   }
 
-  function bufferDepthMs() {
-    if (!audioCtx) return pendingPcm.length * FRAME_MS;
-    if (!primed) return pendingPcm.length * FRAME_MS;
-    return Math.max(0, Math.round((nextAudioTime - audioCtx.currentTime) * 1000));
+  function enqueuePcmFrame(pcm) {
+    chunkFrames.push(pcm);
+    if (chunkFrames.length < CHUNK_FRAMES) {
+      if (!primed) setAudioState('BUFFERING');
+      return;
+    }
+    const frames = chunkFrames.splice(0, CHUNK_FRAMES);
+    enqueueChunk(combineChunk(frames));
   }
 
   function currentPollMs() {
@@ -228,12 +244,15 @@
   }
 
   function renderStats() {
-    if ($('rxAudioBuffer')) $('rxAudioBuffer').textContent = `${bufferDepthMs()} ms`;
+    if ($('rxAudioBuffer')) $('rxAudioBuffer').textContent = `${scheduledDepthMs()} ms`;
     if ($('rxAudioUnderruns')) $('rxAudioUnderruns').textContent = String(underruns);
     if ($('rxAudioDecoded')) $('rxAudioDecoded').textContent = String(decodedFrames);
     if ($('rxAudioErrors')) $('rxAudioErrors').textContent = String(decoderErrorFrames);
     if ($('rxAudioResets')) $('rxAudioResets').textContent = String(streamResets);
     if ($('rxAudioPoll')) $('rxAudioPoll').textContent = `${currentPollMs()} ms`;
+    if ($('rxAudioRate')) $('rxAudioRate').textContent = audioCtx ? `${Math.round(audioCtx.sampleRate)} Hz` : '—';
+    if ($('rxAudioChunk')) $('rxAudioChunk').textContent = `${CHUNK_MS} ms / ${CHUNK_FRAMES}f`;
+    if ($('rxAudioChunks')) $('rxAudioChunks').textContent = String(decodedChunks);
     if ($('rxAudioRoute')) $('rxAudioRoute').textContent = activeRoute;
   }
 
@@ -289,14 +308,15 @@
       if (!autoLockAccept(frame, nowMs)) return;
       const seq = streamNeedsReset(frame, nowMs);
       if (seq.reset) {
+        stopScheduledSources();
         mbe._ywd_mbe_reset();
-        pendingPcm = [];
+        chunkFrames = [];
         primed = false;
         nextAudioTime = 0;
         streamResets += 1;
       }
       const pcm = decodeFrame(frame);
-      enqueuePcm(pcm);
+      enqueuePcmFrame(pcm);
       lastFrameAt = nowMs;
       previousKey = seq.key;
       previousBurst = seq.burst;
@@ -332,7 +352,7 @@
       <div class="rx-audio-head">
         <div>
           <div class="label">PHASE 3E · LIVE BROWSER AUDIO</div>
-          <div class="panel-note">AMBE+2 decode and PCM playback run on this browser. START AUDIO is always explicit.</div>
+          <div class="panel-note">AMBE+2 decode runs frame-by-frame; Web Audio receives continuous 100 ms PCM chunks.</div>
         </div>
         <div class="rx-audio-actions">
           <button class="rx-btn" id="rxAudioStart">START AUDIO</button>
@@ -351,13 +371,16 @@
         <article><div class="label">DECODER</div><div class="rx-audio-value"><span class="rx-audio-state" id="rxDecoderState">IDLE</span></div></article>
         <article><div class="label">BUFFER</div><div class="rx-audio-value" id="rxAudioBuffer">0 ms</div></article>
         <article><div class="label">POLL</div><div class="rx-audio-value" id="rxAudioPoll">250 ms</div></article>
+        <article><div class="label">AUDIO RATE</div><div class="rx-audio-value" id="rxAudioRate">—</div></article>
+        <article><div class="label">CHUNK</div><div class="rx-audio-value" id="rxAudioChunk">100 ms / 5f</div></article>
+        <article><div class="label">CHUNKS</div><div class="rx-audio-value" id="rxAudioChunks">0</div></article>
         <article><div class="label">UNDERRUNS</div><div class="rx-audio-value" id="rxAudioUnderruns">0</div></article>
         <article><div class="label">DECODED</div><div class="rx-audio-value" id="rxAudioDecoded">0</div></article>
         <article><div class="label">DECODER ERRORS</div><div class="rx-audio-value" id="rxAudioErrors">0</div></article>
         <article><div class="label">STREAM RESETS</div><div class="rx-audio-value" id="rxAudioResets">0</div></article>
       </div>
       <div class="rx-audio-route" id="rxAudioRoute">—</div>
-      <div class="panel-note" id="rxAudioNote">AUTO locks playback to one active call/route so simultaneous TS1/TS2 traffic cannot thrash the decoder. Idle polling is 250 ms; START AUDIO uses 100 ms.</div>`;
+      <div class="panel-note" id="rxAudioNote">AUTO locks one active route and releases after 450 ms of silence. START AUDIO uses 100 ms frame polling; decoded PCM is scheduled in 100 ms chunks.</div>`;
     anchor.parentElement.insertBefore(panel, anchor);
 
     $('rxAudioStart').addEventListener('click', () => { void startAudio(); });
