@@ -9,7 +9,7 @@ DECODER="$PHASE3D/generated/ywd-mbelib.js"
 STAGE_ROOT="$HERE/stage"
 STAGE="$STAGE_ROOT/dmr-rx-monitor"
 DIST="$ROOT/dist"
-VERSION="0.4.0-alpha6"
+VERSION="0.4.0-alpha6.1"
 CONFIG_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/ywd-hotspot-plugins/build.json"
 DEFAULT_CORE="$(cd "$ROOT/.." && pwd)/ywd-hotspot"
 MAX_UI_JS=$((256 * 1024))
@@ -91,8 +91,9 @@ css += (stage/'live-audio.css').read_text()
 css_path.write_text(css)
 PY
 
-# Keep the proven alpha5 audio engine byte-for-byte unchanged. Alpha6 adds only
-# a presentation controller after it, then the normal RX Monitor UI source.
+# Keep the proven alpha5 audio engine byte-for-byte unchanged. Alpha6.1 keeps
+# the alpha6 presentation controller, but hidden runtime-owned DOM nodes remain
+# present so the proven base monitor/player can continue updating them safely.
 cat "$STAGE/ywd-mbelib.js" "$STAGE/live-audio.js" "$STAGE/live-audio-polish.js" "$STAGE/ui.js" > "$STAGE/ui.combined.js"
 mv "$STAGE/ui.combined.js" "$STAGE/ui.js"
 rm -f "$STAGE/live-audio.js" "$STAGE/live-audio-polish.js" "$STAGE/live-audio.css" "$STAGE/ywd-mbelib.js"
@@ -135,6 +136,7 @@ echo "     plugin : dmr-rx-monitor v$VERSION"
 echo "     output : $OUT"
 echo "     core   : $CORE"
 echo
-echo "Paired core baseline is Alpha22.6 WebUI polish; RF/audio transport remains Alpha22.5 behavior."
-echo "RX alpha6 keeps the proven alpha5 audio engine unchanged and adds production UI polish only."
-echo "START/STOP is a single toggle; technical diagnostics are collapsed by default."
+echo "Paired core baseline is Alpha22.6.1 WebUI polish; RF/audio transport remains Alpha22.5 behavior."
+echo "RX alpha6.1 keeps the proven alpha5 audio engine unchanged."
+echo "Production polish now hides runtime-owned nodes instead of deleting them."
+echo "START/STOP remains a single toggle; technical diagnostics remain collapsed by default."
