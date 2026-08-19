@@ -20,7 +20,7 @@
 .rx-audio-route{margin-top:10px;border-top:1px solid #17333d;padding-top:9px;color:#62e9ff;font-size:11px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #rxAudioNote{margin-top:7px}
 
-/* Alpha6 presentation-only polish. The alpha5 decoder/scheduler is unchanged. */
+/* Production presentation polish. The proven alpha5 decoder/scheduler is unchanged. */
 .rx-audio-toggle{min-width:118px;transition:border-color .15s,box-shadow .15s,color .15s,background .15s}
 .rx-audio-toggle.active{border-color:#7d3340;color:#ff8190;background:#1b0b10;box-shadow:0 0 16px #ff6c7d18 inset}
 .rx-audio-toggle.working{pointer-events:none;opacity:.88}
@@ -35,5 +35,12 @@
 .rx-monitor-diagnostics>.ambe-panel,.rx-monitor-diagnostics>.frame-panel{margin:0 10px 10px}
 .rx-monitor-diagnostics>.ambe-panel{margin-top:0}
 
+/* Alpha7 final operator-view cleanup. Runtime-owned hidden nodes stay in the DOM. */
+.rx-hero-polished{grid-template-columns:minmax(0,1fr)!important}
+.rx-last-heard-card{min-height:0}
+.rx-last-heard-card .big{font-size:clamp(18px,3vw,30px)}
+.rx-audio-route-primary{border:1px solid #1d4654;border-radius:9px;padding:10px 12px;margin-top:10px;background:#041219;box-shadow:0 0 16px #001015 inset}
+.rx-polish-hidden{display:none!important}
+
 @media(max-width:900px){.rx-audio-controls{grid-template-columns:repeat(2,minmax(0,1fr))}.rx-audio-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
-@media(max-width:560px){.rx-audio-head{flex-direction:column}.rx-audio-actions{justify-content:flex-start}.rx-audio-controls{grid-template-columns:1fr}.rx-audio-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.rx-audio-toggle{min-width:132px}}
+@media(max-width:560px){.rx-audio-head{flex-direction:column}.rx-audio-actions{justify-content:flex-start}.rx-audio-controls{grid-template-columns:1fr}.rx-audio-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.rx-audio-toggle{min-width:132px}.rx-audio-route-primary{white-space:normal;line-height:1.45}}
