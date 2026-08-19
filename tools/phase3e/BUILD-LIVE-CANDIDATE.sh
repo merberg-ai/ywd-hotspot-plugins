@@ -9,7 +9,7 @@ DECODER="$PHASE3D/generated/ywd-mbelib.js"
 STAGE_ROOT="$HERE/stage"
 STAGE="$STAGE_ROOT/dmr-rx-monitor"
 DIST="$ROOT/dist"
-VERSION="0.4.0-alpha5"
+VERSION="0.4.0-alpha6"
 CONFIG_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/ywd-hotspot-plugins/build.json"
 DEFAULT_CORE="$(cd "$ROOT/.." && pwd)/ywd-hotspot"
 MAX_UI_JS=$((256 * 1024))
@@ -20,6 +20,7 @@ need() { command -v "$1" >/dev/null 2>&1 || fail "Required command not found: $1
 for cmd in python3 openssl; do need "$cmd"; done
 [[ -d "$PLUGIN_SRC" ]] || fail "RX Monitor source not found: $PLUGIN_SRC"
 [[ -s "$HERE/live-audio.js" ]] || fail "Missing Phase 3E live-audio.js"
+[[ -s "$HERE/live-audio-polish.js" ]] || fail "Missing Phase 3E live-audio-polish.js"
 [[ -s "$HERE/live-audio.css" ]] || fail "Missing Phase 3E live-audio.css"
 
 if [[ ! -s "$DECODER" ]]; then
@@ -51,6 +52,7 @@ rm -rf "$STAGE_ROOT"
 mkdir -p "$STAGE" "$DIST"
 cp "$PLUGIN_SRC"/* "$STAGE"/
 cp "$HERE/live-audio.js" "$STAGE/live-audio.js"
+cp "$HERE/live-audio-polish.js" "$STAGE/live-audio-polish.js"
 cp "$HERE/live-audio.css" "$STAGE/live-audio.css"
 cp "$DECODER" "$STAGE/ywd-mbelib.js"
 
@@ -61,7 +63,7 @@ stage=pathlib.Path(sys.argv[1]); version=sys.argv[2]
 manifest_path=stage/'plugin.json'
 manifest=json.loads(manifest_path.read_text())
 manifest['version']=version
-manifest['description']='Passive DMR receive monitor with live browser-side AMBE+2 decode, adaptive 100 ms frame polling, bridge-timestamp AUTO call selection, maintained jitter reservoir, 100 ms chunked PCM Web Audio playback, FEC diagnostics, and bounded capture export. No direct RF, serial, MQTT, or network access.'
+manifest['description']='Passive DMR receive monitor with stable live browser-side AMBE+2 audio, AUTO timeslot/call selection, maintained jitter reservoir, capture/FEC diagnostics, and a production-polished RX interface. No direct RF, serial, MQTT, or network access.'
 manifest_path.write_text(json.dumps(manifest, indent=2) + '\n')
 
 ui_path=stage/'ui.js'
@@ -79,8 +81,8 @@ poll_hook="""      const requestedPollMs = typeof window.ywdRxPollIntervalMs ===
 ui=ui.replace(poll_needle, poll_hook)
 
 ui=ui.replace("version:'0.3.0'", f"version:'{version}'")
-ui=ui.replace('PHASE 3B · 49-BIT AMBE+2 FRAME RECOVERY', 'PHASE 3B/3E · AMBE+2 RECOVERY + LIVE AUDIO')
-ui=ui.replace('Browser-side FEC, de-scrambling, continuity diagnostics, and bounded capture export. Still no audio decoding.', 'Browser-side FEC, de-scrambling, continuity diagnostics, capture export, and live-audio handoff.')
+ui=ui.replace('PHASE 3B · 49-BIT AMBE+2 FRAME RECOVERY', 'CAPTURE & FEC')
+ui=ui.replace('Browser-side FEC, de-scrambling, continuity diagnostics, and bounded capture export. Still no audio decoding.', '')
 ui_path.write_text(ui)
 
 css_path=stage/'ui.css'
@@ -89,9 +91,11 @@ css += (stage/'live-audio.css').read_text()
 css_path.write_text(css)
 PY
 
-cat "$STAGE/ywd-mbelib.js" "$STAGE/live-audio.js" "$STAGE/ui.js" > "$STAGE/ui.combined.js"
+# Keep the proven alpha5 audio engine byte-for-byte unchanged. Alpha6 adds only
+# a presentation controller after it, then the normal RX Monitor UI source.
+cat "$STAGE/ywd-mbelib.js" "$STAGE/live-audio.js" "$STAGE/live-audio-polish.js" "$STAGE/ui.js" > "$STAGE/ui.combined.js"
 mv "$STAGE/ui.combined.js" "$STAGE/ui.js"
-rm -f "$STAGE/live-audio.js" "$STAGE/live-audio.css" "$STAGE/ywd-mbelib.js"
+rm -f "$STAGE/live-audio.js" "$STAGE/live-audio-polish.js" "$STAGE/live-audio.css" "$STAGE/ywd-mbelib.js"
 
 UI_BYTES="$(wc -c < "$STAGE/ui.js")"
 DECODER_BYTES="$(wc -c < "$DECODER")"
@@ -131,7 +135,6 @@ echo "     plugin : dmr-rx-monitor v$VERSION"
 echo "     output : $OUT"
 echo "     core   : $CORE"
 echo
-echo "Paired core baseline remains Alpha22.5 unchanged."
-echo "RX alpha5 maintains the selected playout reservoir with bounded +/-2% correction."
-echo "AUTO uses bridge timestamps, follows same-timeslot caller changes immediately, and protects cross-slot overlap."
-echo "100 ms / 5-frame PCM chunks and 100 ms active RX polling remain unchanged."
+echo "Paired core baseline is Alpha22.6 WebUI polish; RF/audio transport remains Alpha22.5 behavior."
+echo "RX alpha6 keeps the proven alpha5 audio engine unchanged and adds production UI polish only."
+echo "START/STOP is a single toggle; technical diagnostics are collapsed by default."
