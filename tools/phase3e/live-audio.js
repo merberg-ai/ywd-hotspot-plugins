@@ -5,6 +5,8 @@
   const FRAME_MS = 20;
   const DEFAULT_BUFFER_MS = 160;
   const CALL_GAP_MS = 500;
+  const AUDIO_POLL_MS = 100;
+  const IDLE_POLL_MS = 250;
 
   let mbe = null;
   let bitsPtr = 0;
@@ -193,12 +195,17 @@
     return Math.max(0, Math.round((nextAudioTime - audioCtx.currentTime) * 1000));
   }
 
+  function currentPollMs() {
+    return audioRunning ? AUDIO_POLL_MS : IDLE_POLL_MS;
+  }
+
   function renderStats() {
     if ($('rxAudioBuffer')) $('rxAudioBuffer').textContent = `${bufferDepthMs()} ms`;
     if ($('rxAudioUnderruns')) $('rxAudioUnderruns').textContent = String(underruns);
     if ($('rxAudioDecoded')) $('rxAudioDecoded').textContent = String(decodedFrames);
     if ($('rxAudioErrors')) $('rxAudioErrors').textContent = String(decoderErrorFrames);
     if ($('rxAudioResets')) $('rxAudioResets').textContent = String(streamResets);
+    if ($('rxAudioPoll')) $('rxAudioPoll').textContent = `${currentPollMs()} ms`;
     if ($('rxAudioRoute')) $('rxAudioRoute').textContent = activeRoute;
   }
 
@@ -219,6 +226,7 @@
       const note = $('rxAudioNote');
       if (note) note.textContent = String(error?.message || error);
     } finally {
+      renderStats();
       if (start) start.disabled = false;
     }
   }
@@ -227,6 +235,7 @@
     audioRunning = false;
     resetPipeline({decoder:true, stopSources:true});
     setAudioState('STOPPED');
+    renderStats();
     if ($('rxAudioStop')) $('rxAudioStop').disabled = true;
   }
 
@@ -278,6 +287,11 @@
   // modem ownership or network access; it consumes only browser-memory data.
   window.ywdRxAudioFrame = frame => { void acceptAmbeFrame(frame || {}); };
 
+  // The normal monitor remains at its proven 250 ms cadence while audio is
+  // stopped. START AUDIO asks the host polling loop for a 100 ms cadence so the
+  // jitter buffer is replenished before its 240 ms test target can starve.
+  window.ywdRxPollIntervalMs = () => currentPollMs();
+
   function mountAudioUi() {
     if ($('rxAudioPanel')) return true;
     const anchor = document.querySelector('.ambe-panel');
@@ -307,13 +321,14 @@
       <div class="rx-audio-grid">
         <article><div class="label">DECODER</div><div class="rx-audio-value"><span class="rx-audio-state" id="rxDecoderState">IDLE</span></div></article>
         <article><div class="label">BUFFER</div><div class="rx-audio-value" id="rxAudioBuffer">0 ms</div></article>
+        <article><div class="label">POLL</div><div class="rx-audio-value" id="rxAudioPoll">250 ms</div></article>
         <article><div class="label">UNDERRUNS</div><div class="rx-audio-value" id="rxAudioUnderruns">0</div></article>
         <article><div class="label">DECODED</div><div class="rx-audio-value" id="rxAudioDecoded">0</div></article>
         <article><div class="label">DECODER ERRORS</div><div class="rx-audio-value" id="rxAudioErrors">0</div></article>
         <article><div class="label">STREAM RESETS</div><div class="rx-audio-value" id="rxAudioResets">0</div></article>
       </div>
       <div class="rx-audio-route" id="rxAudioRoute">—</div>
-      <div class="panel-note" id="rxAudioNote">Default source is NETWORK. Normal call gaps re-prime the jitter buffer without counting as underruns.</div>`;
+      <div class="panel-note" id="rxAudioNote">Idle polling is 250 ms. START AUDIO switches frame polling to 100 ms and STOP AUDIO returns it to 250 ms.</div>`;
     anchor.parentElement.insertBefore(panel, anchor);
 
     $('rxAudioStart').addEventListener('click', () => { void startAudio(); });
@@ -341,6 +356,7 @@
     });
 
     if (!statsTimer) statsTimer = setInterval(renderStats, 250);
+    renderStats();
     return true;
   }
 
