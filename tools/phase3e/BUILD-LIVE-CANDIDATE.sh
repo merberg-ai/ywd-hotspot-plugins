@@ -9,7 +9,7 @@ DECODER="$PHASE3D/generated/ywd-mbelib.js"
 STAGE_ROOT="$HERE/stage"
 STAGE="$STAGE_ROOT/dmr-rx-monitor"
 DIST="$ROOT/dist"
-VERSION="0.4.0-alpha4"
+VERSION="0.4.0-alpha5"
 CONFIG_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/ywd-hotspot-plugins/build.json"
 DEFAULT_CORE="$(cd "$ROOT/.." && pwd)/ywd-hotspot"
 MAX_UI_JS=$((256 * 1024))
@@ -61,7 +61,7 @@ stage=pathlib.Path(sys.argv[1]); version=sys.argv[2]
 manifest_path=stage/'plugin.json'
 manifest=json.loads(manifest_path.read_text())
 manifest['version']=version
-manifest['description']='Passive DMR receive monitor with live browser-side AMBE+2 decode, adaptive 100 ms frame polling, 450 ms AUTO single-call route lock, 100 ms chunked PCM Web Audio playback, FEC diagnostics, and bounded capture export. No direct RF, serial, MQTT, or network access.'
+manifest['description']='Passive DMR receive monitor with live browser-side AMBE+2 decode, adaptive 100 ms frame polling, bridge-timestamp AUTO call selection, maintained jitter reservoir, 100 ms chunked PCM Web Audio playback, FEC diagnostics, and bounded capture export. No direct RF, serial, MQTT, or network access.'
 manifest_path.write_text(json.dumps(manifest, indent=2) + '\n')
 
 ui_path=stage/'ui.js'
@@ -69,7 +69,7 @@ ui=ui_path.read_text()
 needle='        pushCapture(frame, recovered, index);'
 if ui.count(needle) != 1:
     raise SystemExit('RX Monitor ui.js hook point changed; expected exactly one pushCapture call')
-hook="""        pushCapture(frame, recovered, index);\n        if (typeof window.ywdRxAudioFrame === 'function') {\n          try {\n            window.ywdRxAudioFrame({\n              path: frame.source,\n              slot: Number(frame.slot),\n              src: Number(frame.src_id),\n              dst: Number(frame.dst_id),\n              group: !!frame.group,\n              burst_seq: Number(frame.seq),\n              dmr_seq: Number(frame.seq_no),\n              n: Number(frame.n),\n              index,\n              ambe49: recovered.hex,\n              fec: recovered.corrected\n            });\n          } catch (_) {}\n        }"""
+hook="""        pushCapture(frame, recovered, index);\n        if (typeof window.ywdRxAudioFrame === 'function') {\n          try {\n            window.ywdRxAudioFrame({\n              t: Number(frame.received_at) || 0,\n              path: frame.source,\n              slot: Number(frame.slot),\n              src: Number(frame.src_id),\n              dst: Number(frame.dst_id),\n              group: !!frame.group,\n              burst_seq: Number(frame.seq),\n              dmr_seq: Number(frame.seq_no),\n              n: Number(frame.n),\n              index,\n              ambe49: recovered.hex,\n              fec: recovered.corrected\n            });\n          } catch (_) {}\n        }"""
 ui=ui.replace(needle, hook)
 
 poll_needle='      pollTimer = setTimeout(poll, 250);'
@@ -132,6 +132,6 @@ echo "     output : $OUT"
 echo "     core   : $CORE"
 echo
 echo "Paired core baseline remains Alpha22.5 unchanged."
-echo "RX alpha4 schedules decoded PCM as 5-frame / 100 ms chunks."
-echo "AUTO releases its active route after 450 ms of silence."
-echo "START AUDIO requests 100 ms RX polling; STOP AUDIO returns to 250 ms."
+echo "RX alpha5 maintains the selected playout reservoir with bounded +/-2% correction."
+echo "AUTO uses bridge timestamps, follows same-timeslot caller changes immediately, and protects cross-slot overlap."
+echo "100 ms / 5-frame PCM chunks and 100 ms active RX polling remain unchanged."
