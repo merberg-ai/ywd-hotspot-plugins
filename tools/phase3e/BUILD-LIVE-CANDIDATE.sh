@@ -9,7 +9,7 @@ DECODER="$PHASE3D/generated/ywd-mbelib.js"
 STAGE_ROOT="$HERE/stage"
 STAGE="$STAGE_ROOT/dmr-rx-monitor"
 DIST="$ROOT/dist"
-VERSION="0.4.0-alpha2"
+VERSION="0.4.0-alpha3"
 CONFIG_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/ywd-hotspot-plugins/build.json"
 DEFAULT_CORE="$(cd "$ROOT/.." && pwd)/ywd-hotspot"
 MAX_UI_JS=$((256 * 1024))
@@ -61,7 +61,7 @@ stage=pathlib.Path(sys.argv[1]); version=sys.argv[2]
 manifest_path=stage/'plugin.json'
 manifest=json.loads(manifest_path.read_text())
 manifest['version']=version
-manifest['description']='Passive DMR receive monitor with live browser-side AMBE+2 decode, adaptive audio polling, jitter-buffered Web Audio playback, FEC diagnostics, and bounded capture export. No direct RF, serial, MQTT, or network access.'
+manifest['description']='Passive DMR receive monitor with live browser-side AMBE+2 decode, adaptive 100 ms audio polling, AUTO single-call route lock, jitter-buffered Web Audio playback, FEC diagnostics, and bounded capture export. No direct RF, serial, MQTT, or network access.'
 manifest_path.write_text(json.dumps(manifest, indent=2) + '\n')
 
 ui_path=stage/'ui.js'
@@ -87,10 +87,6 @@ css_path=stage/'ui.css'
 css=css_path.read_text()
 css += (stage/'live-audio.css').read_text()
 css_path.write_text(css)
-
-# The final signed package intentionally exposes only the standard declared
-# ui.js/ui.css files. The decoder and live-audio source are concatenated into
-# ui.js below, so Plugin UI v1 requires no extra asset privilege.
 PY
 
 cat "$STAGE/ywd-mbelib.js" "$STAGE/live-audio.js" "$STAGE/ui.js" > "$STAGE/ui.combined.js"
@@ -135,6 +131,7 @@ echo "     plugin : dmr-rx-monitor v$VERSION"
 echo "     output : $OUT"
 echo "     core   : $CORE"
 echo
-echo "For the paired test baseline, update core dev-plugins to Alpha22.4."
-echo "Alpha22.4 carries the proven Alpha22.3 voice-bridge pacing behavior unchanged."
-echo "START AUDIO then requests 100 ms RX polling; STOP AUDIO returns to 250 ms."
+echo "For the paired test baseline, update core dev-plugins to Alpha22.5."
+echo "Alpha22.5 isolates full-ring snapshot serialization in a nice'd writer process."
+echo "RX alpha3 defaults to AUTO call lock; manual TS1/TS2 remain available."
+echo "START AUDIO requests 100 ms RX polling; STOP AUDIO returns to 250 ms."
