@@ -5,6 +5,7 @@
   const FRAME_MS = 20;
   const DEFAULT_BUFFER_MS = 160;
   const CALL_GAP_MS = 500;
+  const AUTO_LOCK_GAP_MS = 900;
   const AUDIO_POLL_MS = 100;
   const IDLE_POLL_MS = 250;
 
@@ -19,7 +20,7 @@
   let pendingPcm = [];
   let scheduledSources = new Set();
   let sourceFilter = 'network';
-  let slotFilter = 'all';
+  let slotFilter = 'auto';
   let targetBufferMs = DEFAULT_BUFFER_MS;
   let volume = 0.70;
   let muted = false;
@@ -31,6 +32,8 @@
   let previousKey = null;
   let previousBurst = null;
   let previousDmrSeq = null;
+  let autoLockKey = null;
+  let autoLockLastFrameAt = 0;
   let activeRoute = '—';
   let statsTimer = null;
 
@@ -49,14 +52,35 @@
     return [frame.path || '', Number(frame.slot) || 0, Number(frame.src) || 0, Number(frame.dst) || 0, frame.group ? 1 : 0].join(':');
   }
 
-  function frameMatches(frame) {
+  function frameMatchesBase(frame) {
     if (sourceFilter !== 'all' && String(frame.path) !== sourceFilter) return false;
-    if (slotFilter !== 'all' && Number(frame.slot) !== Number(slotFilter)) return false;
+    if (slotFilter !== 'auto' && Number(frame.slot) !== Number(slotFilter)) return false;
     return true;
   }
 
+  function autoLockAccept(frame, nowMs) {
+    if (slotFilter !== 'auto') return true;
+    const key = frameKey(frame);
+    if (autoLockKey === null) {
+      autoLockKey = key;
+      autoLockLastFrameAt = nowMs;
+      return true;
+    }
+    if (key === autoLockKey) {
+      autoLockLastFrameAt = nowMs;
+      return true;
+    }
+    if (autoLockLastFrameAt && (nowMs - autoLockLastFrameAt) >= AUTO_LOCK_GAP_MS) {
+      autoLockKey = key;
+      autoLockLastFrameAt = nowMs;
+      return true;
+    }
+    return false;
+  }
+
   function routeText(frame) {
-    return `${String(frame.path || '?').toUpperCase()} · TS${Number(frame.slot) || 0} · ${Number(frame.src) || 0} → ${frame.group ? 'TG' : 'PC'} ${Number(frame.dst) || 0}`;
+    const prefix = slotFilter === 'auto' ? 'AUTO · ' : '';
+    return `${prefix}${String(frame.path || '?').toUpperCase()} · TS${Number(frame.slot) || 0} · ${Number(frame.src) || 0} → ${frame.group ? 'TG' : 'PC'} ${Number(frame.dst) || 0}`;
   }
 
   function setAudioState(text, tone = '') {
@@ -113,7 +137,7 @@
     scheduledSources.clear();
   }
 
-  function resetPipeline({decoder = true, stopSources = false} = {}) {
+  function resetPipeline({decoder = true, stopSources = false, unlockAuto = true} = {}) {
     if (stopSources) stopScheduledSources();
     pendingPcm = [];
     primed = false;
@@ -123,6 +147,10 @@
     previousDmrSeq = null;
     lastFrameAt = 0;
     activeRoute = '—';
+    if (unlockAuto) {
+      autoLockKey = null;
+      autoLockLastFrameAt = 0;
+    }
     if (decoder && mbe) mbe._ywd_mbe_reset();
     renderStats();
   }
@@ -216,7 +244,7 @@
       await ensureDecoder();
       await ensureAudioContext();
       audioRunning = true;
-      resetPipeline({decoder:true, stopSources:true});
+      resetPipeline({decoder:true, stopSources:true, unlockAuto:true});
       setAudioState('BUFFERING');
       if ($('rxAudioStop')) $('rxAudioStop').disabled = false;
     } catch (error) {
@@ -233,7 +261,7 @@
 
   function stopAudio() {
     audioRunning = false;
-    resetPipeline({decoder:true, stopSources:true});
+    resetPipeline({decoder:true, stopSources:true, unlockAuto:true});
     setAudioState('STOPPED');
     renderStats();
     if ($('rxAudioStop')) $('rxAudioStop').disabled = true;
@@ -254,10 +282,11 @@
   }
 
   async function acceptAmbeFrame(frame) {
-    if (!audioRunning || !frameMatches(frame)) return;
+    if (!audioRunning || !frameMatchesBase(frame)) return;
     try {
       if (!mbe || !audioCtx) return;
       const nowMs = performance.now();
+      if (!autoLockAccept(frame, nowMs)) return;
       const seq = streamNeedsReset(frame, nowMs);
       if (seq.reset) {
         mbe._ywd_mbe_reset();
@@ -272,6 +301,7 @@
       previousKey = seq.key;
       previousBurst = seq.burst;
       previousDmrSeq = seq.dmrSeq;
+      if (slotFilter === 'auto') autoLockLastFrameAt = nowMs;
       activeRoute = routeText(frame);
       renderStats();
     } catch (error) {
@@ -288,8 +318,7 @@
   window.ywdRxAudioFrame = frame => { void acceptAmbeFrame(frame || {}); };
 
   // The normal monitor remains at its proven 250 ms cadence while audio is
-  // stopped. START AUDIO asks the host polling loop for a 100 ms cadence so the
-  // jitter buffer is replenished before its 240 ms test target can starve.
+  // stopped. START AUDIO asks the host polling loop for a 100 ms cadence.
   window.ywdRxPollIntervalMs = () => currentPollMs();
 
   function mountAudioUi() {
@@ -313,7 +342,7 @@
       </div>
       <div class="rx-audio-controls">
         <label>Source<select id="rxAudioSource"><option value="network">NETWORK</option><option value="rf">RF</option><option value="all">ALL</option></select></label>
-        <label>Slot<select id="rxAudioSlot"><option value="all">ALL</option><option value="1">TS1</option><option value="2">TS2</option></select></label>
+        <label>Slot<select id="rxAudioSlot"><option value="auto">AUTO</option><option value="1">TS1</option><option value="2">TS2</option></select></label>
         <label>Jitter buffer<select id="rxAudioTarget"><option value="120">120 ms</option><option value="140">140 ms</option><option value="160" selected>160 ms</option><option value="200">200 ms</option><option value="240">240 ms</option></select></label>
         <label class="rx-audio-volume">Volume<input id="rxAudioVolume" type="range" min="0" max="100" step="1" value="70"><span id="rxAudioVolumeValue">70%</span></label>
         <label class="rx-audio-mute"><input id="rxAudioMute" type="checkbox"> MUTE</label>
@@ -328,22 +357,23 @@
         <article><div class="label">STREAM RESETS</div><div class="rx-audio-value" id="rxAudioResets">0</div></article>
       </div>
       <div class="rx-audio-route" id="rxAudioRoute">—</div>
-      <div class="panel-note" id="rxAudioNote">Idle polling is 250 ms. START AUDIO switches frame polling to 100 ms and STOP AUDIO returns it to 250 ms.</div>`;
+      <div class="panel-note" id="rxAudioNote">AUTO locks playback to one active call/route so simultaneous TS1/TS2 traffic cannot thrash the decoder. Idle polling is 250 ms; START AUDIO uses 100 ms.</div>`;
     anchor.parentElement.insertBefore(panel, anchor);
 
     $('rxAudioStart').addEventListener('click', () => { void startAudio(); });
     $('rxAudioStop').addEventListener('click', stopAudio);
     $('rxAudioSource').addEventListener('change', event => {
       sourceFilter = String(event.target.value || 'network');
-      if (audioRunning) resetPipeline({decoder:true, stopSources:true});
+      if (audioRunning) resetPipeline({decoder:true, stopSources:true, unlockAuto:true});
     });
     $('rxAudioSlot').addEventListener('change', event => {
-      slotFilter = String(event.target.value || 'all');
-      if (audioRunning) resetPipeline({decoder:true, stopSources:true});
+      const value = String(event.target.value || 'auto');
+      slotFilter = value === '1' || value === '2' ? value : 'auto';
+      if (audioRunning) resetPipeline({decoder:true, stopSources:true, unlockAuto:true});
     });
     $('rxAudioTarget').addEventListener('change', event => {
       targetBufferMs = Math.max(120, Math.min(240, Number(event.target.value) || DEFAULT_BUFFER_MS));
-      if (audioRunning) resetPipeline({decoder:true, stopSources:true});
+      if (audioRunning) resetPipeline({decoder:true, stopSources:true, unlockAuto:true});
     });
     $('rxAudioVolume').addEventListener('input', event => {
       volume = Math.max(0, Math.min(1, (Number(event.target.value) || 0) / 100));
