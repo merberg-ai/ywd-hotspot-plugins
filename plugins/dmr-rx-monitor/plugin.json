@@ -1,0 +1,21 @@
+{
+  "api": 1,
+  "id": "dmr-rx-monitor",
+  "name": "DMR RX Monitor",
+  "version": "0.1.0",
+  "description": "First YWD DMR receive monitor. Displays capability-gated passive DMR voice frames from the trusted hotspot bridge without direct RF, serial, MQTT, or network access.",
+  "trust": "experimental",
+  "kind": "ui",
+  "provider": "browser-ui",
+  "capabilities": ["ui:section", "read:dmr-voice"],
+  "rf_mode": false,
+  "config_schema": "config.schema.json",
+  "dependencies": [],
+  "hardware": [],
+  "ui": {
+    "api": 1,
+    "label": "RX MONITOR",
+    "script": "ui.js",
+    "style": "ui.css"
+  }
+}
