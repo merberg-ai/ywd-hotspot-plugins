@@ -19,5 +19,21 @@
 .rx-audio-value{margin-top:5px;color:#d8edf2;font-size:14px;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .rx-audio-route{margin-top:10px;border-top:1px solid #17333d;padding-top:9px;color:#62e9ff;font-size:11px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #rxAudioNote{margin-top:7px}
+
+/* Alpha6 presentation-only polish. The alpha5 decoder/scheduler is unchanged. */
+.rx-audio-toggle{min-width:118px;transition:border-color .15s,box-shadow .15s,color .15s,background .15s}
+.rx-audio-toggle.active{border-color:#7d3340;color:#ff8190;background:#1b0b10;box-shadow:0 0 16px #ff6c7d18 inset}
+.rx-audio-toggle.working{pointer-events:none;opacity:.88}
+.rx-audio-toggle.working:before{content:"";display:inline-block;width:10px;height:10px;margin-right:7px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;vertical-align:-1px;animation:rxAudioSpin .65s linear infinite}
+@keyframes rxAudioSpin{to{transform:rotate(360deg)}}
+.rx-audio-advanced,.rx-monitor-diagnostics{margin-top:12px;border:1px solid #173944;border-radius:10px;background:#051017;overflow:hidden}
+.rx-audio-advanced>summary,.rx-monitor-diagnostics>summary{cursor:pointer;list-style:none;padding:10px 12px;color:#7ea3ad;font-size:10px;font-weight:800;letter-spacing:.08em;user-select:none}
+.rx-audio-advanced>summary::-webkit-details-marker,.rx-monitor-diagnostics>summary::-webkit-details-marker{display:none}
+.rx-audio-advanced>summary:before,.rx-monitor-diagnostics>summary:before{content:"▸";display:inline-block;margin-right:8px;color:#62e9ff;transition:transform .15s}
+.rx-audio-advanced[open]>summary:before,.rx-monitor-diagnostics[open]>summary:before{transform:rotate(90deg)}
+.rx-audio-grid-advanced{padding:0 10px 10px}
+.rx-monitor-diagnostics>.ambe-panel,.rx-monitor-diagnostics>.frame-panel{margin:0 10px 10px}
+.rx-monitor-diagnostics>.ambe-panel{margin-top:0}
+
 @media(max-width:900px){.rx-audio-controls{grid-template-columns:repeat(2,minmax(0,1fr))}.rx-audio-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
-@media(max-width:560px){.rx-audio-head{flex-direction:column}.rx-audio-actions{justify-content:flex-start}.rx-audio-controls{grid-template-columns:1fr}.rx-audio-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:560px){.rx-audio-head{flex-direction:column}.rx-audio-actions{justify-content:flex-start}.rx-audio-controls{grid-template-columns:1fr}.rx-audio-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.rx-audio-toggle{min-width:132px}}
