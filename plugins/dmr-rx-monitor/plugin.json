@@ -2,12 +2,15 @@
   "api": 1,
   "id": "dmr-rx-monitor",
   "name": "DMR RX Monitor",
-  "version": "0.2.0",
-  "description": "Passive DMR receive monitor with trusted frame-path diagnostics and browser-side Phase 3A extraction/cadence validation for coded AMBE+2 channel blocks. No direct RF, serial, MQTT, or network access.",
+  "version": "0.3.0",
+  "description": "Passive DMR receive monitor with trusted frame-path diagnostics, browser-side AMBE+2 FEC/de-scrambling, 49-bit vocoder-frame recovery, continuity statistics, and bounded capture export. No direct RF, serial, MQTT, or network access.",
   "trust": "experimental",
   "kind": "ui",
   "provider": "browser-ui",
-  "capabilities": ["ui:section", "read:dmr-voice"],
+  "capabilities": [
+    "ui:section",
+    "read:dmr-voice"
+  ],
   "rf_mode": false,
   "config_schema": "config.schema.json",
   "dependencies": [],
