@@ -1,51 +1,46 @@
 # RX Monitor Phase 3E — live browser audio candidate
 
-Phase 3C proved offline mbelib decode to 8 kHz mono PCM WAV. Phase 3D proved the same pinned mbelib decoder can run in a browser and play intelligible audio through Web Audio. Phase 3E wires that proven browser decoder into the live RX Monitor frame stream without changing modem ownership or decoding audio on the Pi Zero.
+Phase 3C proved offline mbelib decode to 8 kHz mono PCM WAV. Phase 3D proved the same pinned mbelib decoder can run in a browser. Phase 3E wires that browser decoder into the live RX Monitor frame stream while preserving the YWD plugin security boundary: MMDVM-Host remains the sole modem owner and the plugin receives only the capability-gated DMR voice-frame stream.
 
-## Safety boundary
+## Proven audio baseline
 
-The live candidate keeps the existing `read:dmr-voice` trusted bridge. MMDVM-Host remains the sole modem owner. The plugin still has no serial, MQTT, arbitrary network, filesystem, service, microphone/camera, USB, or RF-TX access. AMBE FEC recovery and mbelib speech synthesis run in the browser.
-
-Core Alpha22.2 introduced the narrow Wasm permission for `read:dmr-voice`. Alpha22.3 fixed buffered subscriber drain pacing. Alpha22.5 moved whole-ring JSON serialization into a separate nice'd writer process. Alpha22.5 transport behavior is physically proven and remains unchanged by the Alpha22.6/22.6.1 WebUI polish work.
-
-## Proven alpha5 engine
-
-RX Monitor v0.4.0-alpha5 is the first live-audio build physically validated as stable on busy BrandMeister Worldwide traffic in AUTO mode, with clean AMBE/FEC captures and good live RF-side browser audio. The immutable proof checkpoint is:
+RX Monitor `0.4.0-alpha5` is the first live-audio build physically validated as stable on busy BrandMeister Worldwide traffic in AUTO mode, with clean AMBE/FEC captures and good RF-side browser audio. The immutable proof branch is:
 
 ```text
 checkpoint-alpha22.5-rx3e-alpha5-live-audio-proven
 ```
 
-Alpha6/alpha6.1 deliberately leave `live-audio.js` — the alpha5 decoder, AUTO call selection, maintained jitter reservoir, 100 ms chunk scheduler, playback-rate controller, FEC handoff, and browser audio behavior — unchanged.
+The later polished baseline, including the alpha6.1 DOM-contract fix, is:
 
-## Alpha6.1 presentation polish hotfix
+```text
+checkpoint-alpha22.6.1-rx3e-alpha6.1-polish-proven
+```
 
-`BUILD-LIVE-CANDIDATE.sh` stages v0.4.0-alpha6.1 by combining:
+`live-audio.js` remains the proven alpha5 engine. Alpha7 does not change its decoder, AUTO call selection, maintained jitter reservoir, 100 ms chunk scheduler, playback-rate controller, FEC handoff, or browser-audio behavior.
+
+## Alpha7 — final operator polish
+
+`BUILD-LIVE-CANDIDATE.sh` stages `0.4.0-alpha7` by combining:
 
 1. the exact pinned Phase 3D mbelib browser bundle;
-2. the unchanged proven alpha5 `live-audio.js` engine;
-3. `live-audio-polish.js`, a presentation-only controller;
-4. the normal RX Monitor UI with the established AMBE49 handoff and 100 ms active-audio polling hook.
+2. unchanged proven `live-audio.js`;
+3. the presentation-only `live-audio-polish.js`;
+4. the normal RX Monitor UI with the established AMBE49 handoff and adaptive polling hook.
 
-Alpha6 introduced the production-style monitor cleanup, but removed several DOM nodes (`notice`, `ambeNote`, and `frameNote`) that the proven base RX UI still updates without null checks. This produced a browser `TypeError: Cannot set properties of null (setting 'textContent')` once polling/rendering resumed.
+Alpha7 keeps runtime-owned DOM nodes alive but hides development counters and explanatory text from the normal operator view. The normal page emphasizes:
 
-Alpha6.1 keeps all runtime-owned DOM nodes alive and hides them instead of removing them. The same rule is applied to the legacy STOP control used internally by the single-button toggle. This preserves the alpha5/base-UI DOM contract while retaining the clean operator view.
+- last heard route/caller;
+- source, timeslot/AUTO, jitter target, volume and mute;
+- one animated START AUDIO / STOP AUDIO toggle;
+- decoder state, live buffer depth, underruns and active audio route.
 
-The polish layer:
+Technical playout counters remain under `ADVANCED AUDIO STATS`. Capture/FEC and raw-frame diagnostics remain under `CAPTURE & FRAME DIAGNOSTICS`.
 
-- replaces separate START and STOP controls with one animated `START AUDIO` / `STOP AUDIO` toggle;
-- shows a spinner while browser audio is starting/stopping;
-- hides experimental/developer-facing explanatory text from the normal monitor view without deleting runtime-owned nodes;
-- keeps Decoder, Buffer, and Underruns visible as the useful primary health indicators;
-- moves technical playout counters under collapsed `ADVANCED AUDIO STATS`;
-- moves capture/FEC and raw DMR frame diagnostics under collapsed `CAPTURE & FRAME DIAGNOSTICS`;
-- keeps capture export available without dominating the normal listening interface.
-
-No generated mbelib bundle, WAV, capture, private key, or staged package source is committed.
+Alpha7 also adds 150 ms and 170 ms choices around the physically useful 140–170 ms operating range. The underlying engine still accepts the same 120–240 ms target range and is otherwise unchanged.
 
 ## Engine behavior retained from alpha5
 
-- 250 ms polling while audio is stopped; 100 ms while audio is running.
+- 250 ms frame polling while audio is stopped; 100 ms while running.
 - Five 20 ms AMBE frames per normal 100 ms PCM Web Audio chunk.
 - Maintained scheduled-audio reservoir around the selected jitter target.
 - Playback correction capped to 0.980x–1.020x.
@@ -70,19 +65,24 @@ bash tools/phase3e/BUILD-LIVE-CANDIDATE.sh
 Expected signed package:
 
 ```text
-dist/dmr-rx-monitor-0.4.0-alpha6.1.ywdplugin
+dist/dmr-rx-monitor-0.4.0-alpha7.ywdplugin
 ```
 
-## Alpha6.1 validation
+## First transactional update proof
 
-1. Keep core on Alpha22.6.1; no further core update is required for this plugin hotfix.
-2. Replace RX Monitor alpha6 with alpha6.1.
-3. Confirm the browser console remains free of the prior null/textContent TypeError while the monitor polls and frames arrive.
-4. Confirm the monitor shows one START AUDIO button and no visible separate STOP button.
-5. Confirm START AUDIO animates while the decoder/AudioContext starts, then changes to STOP AUDIO.
-6. Confirm STOP AUDIO returns the same button to START AUDIO.
-7. Test NETWORK / AUTO at the previously proven 140–170 ms range on a busy talkgroup.
-8. Test RF audio again without changing the audio engine settings.
-9. Open Advanced Audio Stats and Capture & Frame Diagnostics only as needed to confirm counters/export still work.
+Alpha7 is intentionally paired with YWD-Hotspot Alpha22.7 and its new transactional plugin installer.
 
-The next step after UI polish is the separate distribution/licensing review required before promoting the local signed mbelib/Wasm candidate into the canonical public plugin source.
+1. Update the hotspot core to Alpha22.7 first.
+2. Leave the physically proven RX Monitor `0.4.0-alpha6.1` installed and enabled. Do **not** disable, uninstall, or remove its package.
+3. Upload `dmr-rx-monitor-0.4.0-alpha7.ywdplugin` from Plugins.
+4. The package review should classify it as `PLUGIN UPDATE` and show `0.4.0-alpha6.1 → 0.4.0-alpha7`.
+5. Confirm the same trusted signing key/capabilities, preserved configuration/data, and preserved installed/enabled state.
+6. Press `UPDATE PLUGIN`.
+7. Confirm RX Monitor remains installed + enabled at alpha7 and the RX tab still loads normally.
+8. Test NETWORK / AUTO around 160 ms, then the 140/150/170 ms choices. A short RF audio check is also recommended.
+
+If the transaction fails, Alpha22.7 is designed to restore the previous uploaded package, plugin state, configuration, and service runtime where applicable.
+
+## Distribution note
+
+The generated mbelib browser decoder remains a local signed candidate artifact. Do not promote or publish the compiled decoder blindly: upstream mbelib carries patent/licensing cautions. Public/canonical plugin promotion remains a separate decision after the update path and alpha7 polish are physically proven.
