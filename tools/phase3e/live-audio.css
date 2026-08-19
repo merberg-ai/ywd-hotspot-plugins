@@ -1,0 +1,23 @@
+
+/* Phase 3E live browser audio candidate */
+.rx-audio-panel{border:1px solid #1d4654;border-radius:12px;background:linear-gradient(180deg,#0a1a22ee,#071119ee);padding:14px;margin-bottom:12px;box-shadow:0 12px 35px #0005,0 0 30px #001015 inset}
+.rx-audio-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px}
+.rx-audio-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap}
+.rx-audio-state{display:inline-flex;align-items:center;justify-content:center;min-width:76px;border:1px solid #1d4654;border-radius:999px;padding:5px 8px;color:#7ea3ad;font-size:10px;font-weight:800;letter-spacing:.08em}
+.rx-audio-state.good{color:#6bf4a5;border-color:#2b7f54;box-shadow:0 0 12px #6bf4a516 inset}
+.rx-audio-state.warn{color:#ffd166;border-color:#806b2f}
+.rx-audio-state.bad{color:#ff6c7d;border-color:#7d3340}
+.rx-audio-controls{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;margin-bottom:12px}
+.rx-audio-controls label{display:flex;flex-direction:column;gap:5px;color:#7ea3ad;font-size:10px;letter-spacing:.06em}
+.rx-audio-controls select,.rx-audio-controls input[type="range"]{width:100%;border:1px solid #1c4553;background:#040d12;color:#d8edf2;border-radius:7px;padding:8px;outline:none}
+.rx-audio-controls select:focus,.rx-audio-controls input[type="range"]:focus{border-color:#62e9ff}
+.rx-audio-volume span{color:#62e9ff;font-size:10px}
+.rx-audio-mute{justify-content:end;padding-bottom:8px}
+.rx-audio-mute input{accent-color:#62e9ff}
+.rx-audio-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px}
+.rx-audio-grid article{border:1px solid #173944;background:#051017;border-radius:9px;padding:10px;min-width:0}
+.rx-audio-value{margin-top:5px;color:#d8edf2;font-size:14px;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rx-audio-route{margin-top:10px;border-top:1px solid #17333d;padding-top:9px;color:#62e9ff;font-size:11px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#rxAudioNote{margin-top:7px}
+@media(max-width:900px){.rx-audio-controls{grid-template-columns:repeat(2,minmax(0,1fr))}.rx-audio-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:560px){.rx-audio-head{flex-direction:column}.rx-audio-actions{justify-content:flex-start}.rx-audio-controls{grid-template-columns:1fr}.rx-audio-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
