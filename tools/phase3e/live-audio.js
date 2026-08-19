@@ -5,13 +5,17 @@
   const FRAME_MS = 20;
   const CHUNK_FRAMES = 5;
   const CHUNK_MS = FRAME_MS * CHUNK_FRAMES;
-  const CHUNK_SAMPLES = SAMPLES_PER_FRAME * CHUNK_FRAMES;
   const DEFAULT_BUFFER_MS = 160;
   const CALL_GAP_MS = 500;
   const AUTO_LOCK_GAP_MS = 450;
   const AUDIO_POLL_MS = 100;
   const IDLE_POLL_MS = 250;
   const MIN_START_LEAD_MS = 40;
+  const RESERVOIR_DEADBAND_MS = 20;
+  const RESERVOIR_GAIN_MS = 3500;
+  const MIN_PLAYBACK_RATE = 0.98;
+  const MAX_PLAYBACK_RATE = 1.02;
+  const HARD_REANCHOR_EXTRA_MS = 400;
 
   let mbe = null;
   let bitsPtr = 0;
@@ -33,16 +37,21 @@
   let decoderErrorFrames = 0;
   let underruns = 0;
   let streamResets = 0;
-  let lastFrameAt = 0;
+  let autoHandoffs = 0;
+  let reservoirReanchors = 0;
+  let currentPlaybackRate = 1.0;
+  let lastFrameSourceMs = 0;
   let previousKey = null;
   let previousBurst = null;
   let previousDmrSeq = null;
   let autoLockKey = null;
-  let autoLockLastFrameAt = 0;
+  let autoLockSlot = 0;
+  let autoLockLastSourceMs = 0;
   let activeRoute = '—';
   let statsTimer = null;
 
   const $ = id => document.getElementById(id);
+  const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
   function ambeBits(value) {
     const text = String(value || '').trim().toLowerCase();
@@ -57,27 +66,47 @@
     return [frame.path || '', Number(frame.slot) || 0, Number(frame.src) || 0, Number(frame.dst) || 0, frame.group ? 1 : 0].join(':');
   }
 
+  function frameTimeMs(frame) {
+    const value = Number(frame.t);
+    return Number.isFinite(value) && value > 0 ? value * 1000 : performance.now();
+  }
+
   function frameMatchesBase(frame) {
     if (sourceFilter !== 'all' && String(frame.path) !== sourceFilter) return false;
     if (slotFilter !== 'auto' && Number(frame.slot) !== Number(slotFilter)) return false;
     return true;
   }
 
-  function autoLockAccept(frame, nowMs) {
+  function acquireAutoLock(key, slot, sourceMs, isHandoff) {
+    if (isHandoff) autoHandoffs += 1;
+    autoLockKey = key;
+    autoLockSlot = slot;
+    autoLockLastSourceMs = sourceMs;
+  }
+
+  function autoLockAccept(frame, sourceMs) {
     if (slotFilter !== 'auto') return true;
     const key = frameKey(frame);
+    const slot = Number(frame.slot) || 0;
     if (autoLockKey === null) {
-      autoLockKey = key;
-      autoLockLastFrameAt = nowMs;
+      acquireAutoLock(key, slot, sourceMs, false);
       return true;
     }
     if (key === autoLockKey) {
-      autoLockLastFrameAt = nowMs;
+      autoLockLastSourceMs = Math.max(autoLockLastSourceMs, sourceMs);
       return true;
     }
-    if (autoLockLastFrameAt && (nowMs - autoLockLastFrameAt) >= AUTO_LOCK_GAP_MS) {
-      autoLockKey = key;
-      autoLockLastFrameAt = nowMs;
+    // A different route on the same DMR timeslot is a real call handoff, not
+    // simultaneous duplex traffic. Switch immediately so AUTO does not miss
+    // the first ~450 ms of the next caller on a busy talkgroup.
+    if (slot === autoLockSlot) {
+      acquireAutoLock(key, slot, sourceMs, true);
+      return true;
+    }
+    // Traffic on the other timeslot can be simultaneous. Only move the AUTO
+    // lock after the currently locked route has been quiet in bridge time.
+    if (autoLockLastSourceMs && (sourceMs - autoLockLastSourceMs) >= AUTO_LOCK_GAP_MS) {
+      acquireAutoLock(key, slot, sourceMs, true);
       return true;
     }
     return false;
@@ -147,14 +176,16 @@
     chunkFrames = [];
     primed = false;
     nextAudioTime = 0;
+    currentPlaybackRate = 1.0;
     previousKey = null;
     previousBurst = null;
     previousDmrSeq = null;
-    lastFrameAt = 0;
+    lastFrameSourceMs = 0;
     activeRoute = '—';
     if (unlockAuto) {
       autoLockKey = null;
-      autoLockLastFrameAt = 0;
+      autoLockSlot = 0;
+      autoLockLastSourceMs = 0;
     }
     if (decoder && mbe) mbe._ywd_mbe_reset();
     renderStats();
@@ -174,19 +205,18 @@
     return pcm;
   }
 
-  function combineChunk(frames) {
-    const chunk = new Float32Array(CHUNK_SAMPLES);
-    for (let frameIndex = 0; frameIndex < CHUNK_FRAMES; frameIndex++) {
-      chunk.set(frames[frameIndex], frameIndex * SAMPLES_PER_FRAME);
-    }
+  function combineFrames(frames) {
+    const chunk = new Float32Array(frames.length * SAMPLES_PER_FRAME);
+    frames.forEach((pcm, index) => chunk.set(pcm, index * SAMPLES_PER_FRAME));
     return chunk;
   }
 
-  function scheduleChunk(pcm, when) {
+  function scheduleChunk(pcm, when, rate) {
     const buffer = audioCtx.createBuffer(1, pcm.length, SAMPLE_RATE);
     buffer.getChannelData(0).set(pcm);
     const source = audioCtx.createBufferSource();
     source.buffer = buffer;
+    source.playbackRate.setValueAtTime(rate, when);
     source.connect(gainNode);
     scheduledSources.add(source);
     source.onended = () => {
@@ -201,19 +231,30 @@
     return Math.max(0, Math.round((nextAudioTime - audioCtx.currentTime) * 1000));
   }
 
-  function primeAndScheduleChunk(chunk) {
-    const startLeadMs = Math.max(MIN_START_LEAD_MS, targetBufferMs - CHUNK_MS);
+  function controlledPlaybackRate(nominalMs) {
+    if (!audioCtx || !primed) return 1.0;
+    const depthBeforeMs = Math.max(0, (nextAudioTime - audioCtx.currentTime) * 1000);
+    const projectedMs = depthBeforeMs + nominalMs;
+    const errorMs = projectedMs - targetBufferMs;
+    if (Math.abs(errorMs) <= RESERVOIR_DEADBAND_MS) return 1.0;
+    const signedExcess = Math.sign(errorMs) * (Math.abs(errorMs) - RESERVOIR_DEADBAND_MS);
+    return clamp(1 + (signedExcess / RESERVOIR_GAIN_MS), MIN_PLAYBACK_RATE, MAX_PLAYBACK_RATE);
+  }
+
+  function primeAndScheduleChunk(chunk, nominalMs) {
+    const startLeadMs = Math.max(MIN_START_LEAD_MS, targetBufferMs - nominalMs);
     nextAudioTime = Math.max(audioCtx.currentTime + (startLeadMs / 1000), nextAudioTime || 0);
-    scheduleChunk(chunk, nextAudioTime);
-    nextAudioTime += CHUNK_MS / 1000;
+    currentPlaybackRate = 1.0;
+    scheduleChunk(chunk, nextAudioTime, currentPlaybackRate);
+    nextAudioTime += (nominalMs / 1000) / currentPlaybackRate;
     decodedChunks += 1;
     primed = true;
     setAudioState('LIVE', 'good');
   }
 
-  function enqueueChunk(chunk) {
+  function enqueueChunk(chunk, nominalMs) {
     if (!primed) {
-      primeAndScheduleChunk(chunk);
+      primeAndScheduleChunk(chunk, nominalMs);
       return;
     }
     if (nextAudioTime < audioCtx.currentTime + 0.005) {
@@ -221,11 +262,12 @@
       primed = false;
       nextAudioTime = 0;
       setAudioState('REBUFFER', 'warn');
-      primeAndScheduleChunk(chunk);
+      primeAndScheduleChunk(chunk, nominalMs);
       return;
     }
-    scheduleChunk(chunk, nextAudioTime);
-    nextAudioTime += CHUNK_MS / 1000;
+    currentPlaybackRate = controlledPlaybackRate(nominalMs);
+    scheduleChunk(chunk, nextAudioTime, currentPlaybackRate);
+    nextAudioTime += (nominalMs / 1000) / currentPlaybackRate;
     decodedChunks += 1;
   }
 
@@ -236,7 +278,13 @@
       return;
     }
     const frames = chunkFrames.splice(0, CHUNK_FRAMES);
-    enqueueChunk(combineChunk(frames));
+    enqueueChunk(combineFrames(frames), frames.length * FRAME_MS);
+  }
+
+  function flushPartialChunk() {
+    if (!chunkFrames.length) return;
+    const frames = chunkFrames.splice(0);
+    enqueueChunk(combineFrames(frames), frames.length * FRAME_MS);
   }
 
   function currentPollMs() {
@@ -253,6 +301,9 @@
     if ($('rxAudioRate')) $('rxAudioRate').textContent = audioCtx ? `${Math.round(audioCtx.sampleRate)} Hz` : '—';
     if ($('rxAudioChunk')) $('rxAudioChunk').textContent = `${CHUNK_MS} ms / ${CHUNK_FRAMES}f`;
     if ($('rxAudioChunks')) $('rxAudioChunks').textContent = String(decodedChunks);
+    if ($('rxAudioPlayRate')) $('rxAudioPlayRate').textContent = `${currentPlaybackRate.toFixed(3)}×`;
+    if ($('rxAudioHandoffs')) $('rxAudioHandoffs').textContent = String(autoHandoffs);
+    if ($('rxAudioReanchors')) $('rxAudioReanchors').textContent = String(reservoirReanchors);
     if ($('rxAudioRoute')) $('rxAudioRoute').textContent = activeRoute;
   }
 
@@ -286,42 +337,58 @@
     if ($('rxAudioStop')) $('rxAudioStop').disabled = true;
   }
 
-  function streamNeedsReset(frame, nowMs) {
+  function streamTransition(frame, sourceMs) {
     const key = frameKey(frame);
-    let reset = false;
-    if (lastFrameAt && (nowMs - lastFrameAt) > CALL_GAP_MS) reset = true;
-    if (previousKey !== null && key !== previousKey) reset = true;
+    const routeChanged = previousKey !== null && key !== previousKey;
+    const gapDetected = lastFrameSourceMs && (sourceMs - lastFrameSourceMs) > CALL_GAP_MS;
     const burst = Number(frame.burst_seq) || 0;
     const dmrSeq = Number(frame.dmr_seq) || 0;
-    if (previousBurst !== null && burst !== previousBurst && previousDmrSeq !== null) {
+    let seqGap = false;
+    if (!routeChanged && previousBurst !== null && burst !== previousBurst && previousDmrSeq !== null) {
       const expected = (previousDmrSeq + 1) & 0xff;
-      if ((dmrSeq & 0xff) !== expected) reset = true;
+      seqGap = (dmrSeq & 0xff) !== expected;
     }
-    return {reset, key, burst, dmrSeq};
+    return {reset: routeChanged || gapDetected || seqGap, key, burst, dmrSeq, routeChanged, gapDetected, seqGap};
+  }
+
+  function applyStreamTransition(info) {
+    if (!info.reset) return;
+    const safeBoundary = info.routeChanged || info.gapDetected;
+    const tooDeep = primed && scheduledDepthMs() > (targetBufferMs + HARD_REANCHOR_EXTRA_MS);
+    if (safeBoundary && tooDeep) {
+      stopScheduledSources();
+      chunkFrames = [];
+      primed = false;
+      nextAudioTime = 0;
+      currentPlaybackRate = 1.0;
+      reservoirReanchors += 1;
+    } else {
+      // Preserve every complete/partial piece of the old call and let the new
+      // call append after the already-scheduled tail instead of stopping it.
+      flushPartialChunk();
+      if (primed && nextAudioTime < audioCtx.currentTime + 0.005) {
+        primed = false;
+        nextAudioTime = 0;
+      }
+    }
+    mbe._ywd_mbe_reset();
+    streamResets += 1;
   }
 
   async function acceptAmbeFrame(frame) {
     if (!audioRunning || !frameMatchesBase(frame)) return;
     try {
       if (!mbe || !audioCtx) return;
-      const nowMs = performance.now();
-      if (!autoLockAccept(frame, nowMs)) return;
-      const seq = streamNeedsReset(frame, nowMs);
-      if (seq.reset) {
-        stopScheduledSources();
-        mbe._ywd_mbe_reset();
-        chunkFrames = [];
-        primed = false;
-        nextAudioTime = 0;
-        streamResets += 1;
-      }
+      const sourceMs = frameTimeMs(frame);
+      if (!autoLockAccept(frame, sourceMs)) return;
+      const transition = streamTransition(frame, sourceMs);
+      applyStreamTransition(transition);
       const pcm = decodeFrame(frame);
       enqueuePcmFrame(pcm);
-      lastFrameAt = nowMs;
-      previousKey = seq.key;
-      previousBurst = seq.burst;
-      previousDmrSeq = seq.dmrSeq;
-      if (slotFilter === 'auto') autoLockLastFrameAt = nowMs;
+      lastFrameSourceMs = sourceMs;
+      previousKey = transition.key;
+      previousBurst = transition.burst;
+      previousDmrSeq = transition.dmrSeq;
       activeRoute = routeText(frame);
       renderStats();
     } catch (error) {
@@ -352,7 +419,7 @@
       <div class="rx-audio-head">
         <div>
           <div class="label">PHASE 3E · LIVE BROWSER AUDIO</div>
-          <div class="panel-note">AMBE+2 decode runs frame-by-frame; Web Audio receives continuous 100 ms PCM chunks.</div>
+          <div class="panel-note">AMBE+2 decode runs frame-by-frame; Web Audio receives 100 ms PCM chunks with a maintained playout reservoir.</div>
         </div>
         <div class="rx-audio-actions">
           <button class="rx-btn" id="rxAudioStart">START AUDIO</button>
@@ -374,13 +441,16 @@
         <article><div class="label">AUDIO RATE</div><div class="rx-audio-value" id="rxAudioRate">—</div></article>
         <article><div class="label">CHUNK</div><div class="rx-audio-value" id="rxAudioChunk">100 ms / 5f</div></article>
         <article><div class="label">CHUNKS</div><div class="rx-audio-value" id="rxAudioChunks">0</div></article>
+        <article><div class="label">PLAY RATE</div><div class="rx-audio-value" id="rxAudioPlayRate">1.000×</div></article>
+        <article><div class="label">HANDOFFS</div><div class="rx-audio-value" id="rxAudioHandoffs">0</div></article>
+        <article><div class="label">REANCHORS</div><div class="rx-audio-value" id="rxAudioReanchors">0</div></article>
         <article><div class="label">UNDERRUNS</div><div class="rx-audio-value" id="rxAudioUnderruns">0</div></article>
         <article><div class="label">DECODED</div><div class="rx-audio-value" id="rxAudioDecoded">0</div></article>
         <article><div class="label">DECODER ERRORS</div><div class="rx-audio-value" id="rxAudioErrors">0</div></article>
         <article><div class="label">STREAM RESETS</div><div class="rx-audio-value" id="rxAudioResets">0</div></article>
       </div>
       <div class="rx-audio-route" id="rxAudioRoute">—</div>
-      <div class="panel-note" id="rxAudioNote">AUTO locks one active route and releases after 450 ms of silence. START AUDIO uses 100 ms frame polling; decoded PCM is scheduled in 100 ms chunks.</div>`;
+      <div class="panel-note" id="rxAudioNote">AUTO follows same-timeslot caller changes immediately and only crosses TS1/TS2 after 450 ms of bridge-timestamp silence. The selected jitter target is actively maintained with ±2% playout correction.</div>`;
     anchor.parentElement.insertBefore(panel, anchor);
 
     $('rxAudioStart').addEventListener('click', () => { void startAudio(); });
@@ -421,7 +491,7 @@
       const observer = new MutationObserver(() => {
         if (mountAudioUi()) observer.disconnect();
       });
-      observer.observe(root, {childList:true, subtree:true});
+      observer.observe(root, {childList:true,subtree:true});
     };
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => setTimeout(tryMount, 0), {once:true});
     else setTimeout(tryMount, 0);
