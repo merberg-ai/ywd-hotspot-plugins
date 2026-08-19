@@ -1,33 +1,33 @@
 # YWD-Hotspot Plugins
 
-Open-source plugin development for **YWD-Hotspot**.
+Open-source companion workspace for **YWD-Hotspot** plugin development.
 
-This repository is the companion plugin workspace for `merberg-ai/ywd-hotspot`. The core YWD-Hotspot repository remains authoritative for the plugin API, `.ywdplugin` package format, signature verification, lifecycle manager, sandbox, updater integration, Plugin UI bridge, and RF ownership rules.
+Core repository:
+
+```text
+merberg-ai/ywd-hotspot
+```
+
+YWD-Hotspot core remains authoritative for the plugin API, `.ywdplugin` format, signature verification, lifecycle/update transactions, service sandbox, Plugin UI isolation, updater integration, and RF ownership rules.
 
 ## Current compatibility target
 
-Plugin development currently targets the experimental `dev-plugins` line of YWD-Hotspot. The stable development fallback lives on core `dev`.
+Plugin development tracks the plugin-capable YWD-Hotspot integration runtime. Core `dev` is the physically accepted baseline; `dev-plugins` may move ahead with next-development integration work.
 
-Core documentation:
+The plugin repository itself keeps plugin source/examples separate from trusted core implementation.
 
-- `docs/PLUGINS.md` in `merberg-ai/ywd-hotspot`
-- `docs/PLUGIN-PACKAGES.md` in `merberg-ai/ywd-hotspot`
-- `docs/PLUGIN-UI.md` in `merberg-ai/ywd-hotspot`
-- `tools/ywdplugin-build.py` in `merberg-ai/ywd-hotspot`
-
-## Repository layout
+## Layout
 
 ```text
-plugins/       real plugin source and focused validation plugins
-examples/      harmless/reference examples
+plugins/       plugin source and focused validation plugins
+examples/      harmless/reference packages
 docs/          plugin-development notes
-dist/          local build output; not committed
-PLUGIN-DEV.sh  interactive build/sign/inspect helper
+tools/         RX decoder/audio development tooling
+dist/          local build output; ignored
+PLUGIN-DEV.sh  build/sign/inspect helper
 ```
 
-Each plugin keeps its own source directory and builds into the canonical flat `.ywdplugin` package format.
-
-## Interactive developer tool
+## Developer helper
 
 With `ywd-hotspot` and `ywd-hotspot-plugins` checked out beside one another:
 
@@ -35,72 +35,107 @@ With `ywd-hotspot` and `ywd-hotspot-plugins` checked out beside one another:
 ./PLUGIN-DEV.sh
 ```
 
-The menu can select and validate plugin source, build/sign packages through the canonical core builder, create an Ed25519 publisher key outside both Git repositories, inspect package sizes/hashes, verify signatures, and print the hotspot public-key trust command.
-
-Command mode is also available:
+Command mode:
 
 ```bash
 ./PLUGIN-DEV.sh list
-./PLUGIN-DEV.sh validate ui-smoke-test
-./PLUGIN-DEV.sh sign ui-smoke-test
-./PLUGIN-DEV.sh verify dist/ui-smoke-test-0.1.0.ywdplugin
+./PLUGIN-DEV.sh validate <plugin-id>
+./PLUGIN-DEV.sh sign <plugin-id>
+./PLUGIN-DEV.sh verify dist/<package>.ywdplugin
 ```
 
-`PLUGIN-DEV.sh` is orchestration only. The authoritative package builder remains `ywd-hotspot/tools/ywdplugin-build.py`.
+`PLUGIN-DEV.sh` is orchestration only. The canonical package builder is still:
+
+```text
+ywd-hotspot/tools/ywdplugin-build.py
+```
 
 ## Plugin kinds
 
-Current framework models are intentionally distinct:
-
 ```text
-declarative  core interprets data/config; no plugin executable code
-service      signed Python entrypoint in the shared hardened Pi sandbox
-ui           signed browser-side JS/CSS in the sandboxed Plugin UI frame; no Pi daemon
+declarative  trusted core interprets metadata/config; no plugin executable code
+service      signed Python entrypoint in shared hardened Pi sandbox
+ui           signed JS/CSS inside isolated dashboard iframe; no Pi daemon
 ```
 
-The Phase-1 `plugins/ui-smoke-test` package validates Plugin UI v1 before DMR Monitor work begins.
+Current plugins never independently own RF serial, start a competing MMDVM instance, receive arbitrary sudo, or gain RF TX authority.
 
-## Safety contract
+## Package install/update behavior
 
-Current supported plugins must follow the core rules:
+Core now supports both new installs and transactional same-ID package updates.
 
-- `rf_mode = false`
-- no direct `/dev/serial0` ownership
-- no competing MMDVM-Host instance
-- no arbitrary sudo
-- no plugin-supplied systemd unit
-- no broad network sockets
-- executable service packages require a trusted Ed25519 signature
-- browser UI packages require a trusted Ed25519 signature
-- UI code runs in an isolated dashboard iframe rather than the trusted dashboard DOM
-- private signing keys are never committed
-- install does not imply enable/start
-- master OFF must restore a normal YWD-Hotspot appliance
-
-## Development flow
+New package:
 
 ```text
-plugin source
-  -> validate manifest/schema
-  -> build .ywdplugin
-  -> sign executable service/UI package
-  -> upload to unlocked YWD-Hotspot Plugin Manager
-  -> AVAILABLE
-  -> INSTALL
-  -> ENABLE / test
-  -> DISABLE
-  -> UNINSTALL
-  -> REMOVE DATA / REMOVE PACKAGE as needed
+UPLOAD → VERIFY/REVIEW → INSTALL → ENABLE
 ```
 
-The uploaded signed-service lifecycle was physically validated on the Pi using the harmless `upload-smoke-test` package. Plugin UI v1 is the next experimental validation phase and should not be described as known-good until its hardware/browser lifecycle test passes.
+Existing uploaded plugin:
+
+```text
+UPLOAD → VERIFY/REVIEW → UPDATE / REINSTALL / DOWNGRADE / REPLACE
+```
+
+A confirmed update preserves config/data and prior valid installed/enabled state, with rollback if package replacement fails. The old manual disable/uninstall/remove/re-upload sequence is no longer required for a normal update.
+
+## RX Monitor status
+
+The DMR RX Monitor development path has physically proven:
+
+- capability-gated passive DMR frame access;
+- browser DMR deinterleave/FEC/49-bit AMBE+2 recovery;
+- bounded capture diagnostics;
+- offline AMBE→PCM proof;
+- browser decoder proof;
+- live network audio including busy AUTO operation;
+- live RF-side browser audio.
+
+The **public canonical source directory is intentionally not yet promoted to the live-audio package**. `plugins/dmr-rx-monitor` remains the pre-audio v0.3 source boundary, while `tools/phase3e/BUILD-LIVE-CANDIDATE.sh` stages the locally signed `0.4.0-alpha7` development candidate by combining that proven base with the local browser decoder/live-audio layers.
+
+That split is deliberate until the project makes the separate mbelib/Wasm source/binary distribution decision. Do not commit generated decoder output merely to make the repository look more finished.
+
+## RX development tooling
+
+```text
+tools/phase3c   offline capture → WAV proof
+tools/phase3d   local browser decoder build/playback proof
+tools/phase3e   live-audio candidate assembly/polish
+```
+
+These directories are development history/tooling, not three separate user-facing plugins. Once RX Monitor has a canonical distributable source form, the historical proof tooling can be archived/consolidated.
+
+Generated decoder output and candidate staging remain ignored.
 
 ## Signing keys
 
-Keep publisher private keys outside this repository. `PLUGIN-DEV.sh` stores developer configuration and generated keys under `~/.config/ywd-hotspot-plugins/` by default and refuses to create signing keys inside either Git repository.
+Publisher private keys stay outside both repositories, normally under developer-owned configuration such as:
 
-Only the **public** publisher key belongs on the hotspot under `/etc/ywd-hotspot/plugin-trust.d/<key-id>.pem`.
+```text
+~/.config/ywd-hotspot-plugins/
+```
 
-## Monitor direction
+Only a publisher's **public** key belongs on a hotspot under:
 
-The planned first real rich plugin is an RX-only browser DMR Monitor. The first Monitor milestone comes after Plugin UI v1 is proven and will use an explicit passive core capability rather than direct RF, serial, packet-capture, or privileged access. Expensive audio decode work is intended for the browser so the original Raspberry Pi Zero W remains the performance budget.
+```text
+/etc/ywd-hotspot/plugin-trust.d/<key-id>.pem
+```
+
+Never commit a signing private key.
+
+## Reference packages
+
+`ui-smoke-test` and `examples/upload-smoke-test` exist to validate framework behavior, not as end-user features. The UI smoke test is a cleanup candidate for movement into examples/test fixtures once the current core pre-main hardening has been physically validated.
+
+## Safety contract
+
+- `rf_mode = false` for current supported plugins;
+- no direct `/dev/serial0` ownership;
+- no competing MMDVM-Host;
+- no arbitrary sudo;
+- no plugin-supplied systemd unit;
+- service plugins use the shared restricted sandbox;
+- UI plugins run in isolated iframes;
+- executable service/UI packages require trusted Ed25519 signatures;
+- install does not imply enable;
+- master OFF remains authoritative;
+- private signing keys are never committed or stored on the hotspot.
