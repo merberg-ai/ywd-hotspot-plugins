@@ -2,8 +2,15 @@
 (() => {
   const $ = id => document.getElementById(id);
 
-  function removeNode(node) {
-    try { node?.remove(); } catch (_) {}
+  // Presentation polish must never remove nodes owned by the proven alpha5
+  // player or the underlying RX Monitor UI. Several of those nodes are updated
+  // continuously without null checks. Hide them instead so the runtime DOM
+  // contract remains intact while the normal operator view stays clean.
+  function hideNode(node) {
+    if (!node) return;
+    node.hidden = true;
+    node.setAttribute('aria-hidden', 'true');
+    node.classList.add('rx-polish-hidden');
   }
 
   function articleFor(id) {
@@ -17,7 +24,7 @@
     if (!start || !stop || !state || start.dataset.rxPolished === '1') return;
     start.dataset.rxPolished = '1';
     const stopControl = stop;
-    removeNode(stop);
+    hideNode(stopControl);
     start.classList.add('rx-audio-toggle');
 
     let starting = false;
@@ -31,6 +38,7 @@
       const running = runningState();
       if (running) {
         starting = false;
+        stopping = false;
         start.disabled = false;
         start.textContent = 'STOP AUDIO';
         start.setAttribute('aria-pressed', 'true');
@@ -46,7 +54,10 @@
         start.classList.remove('active', 'working');
         start.removeAttribute('aria-busy');
       }
-      if (String(state.textContent || '').trim().toUpperCase() === 'ERROR') starting = false;
+      if (String(state.textContent || '').trim().toUpperCase() === 'ERROR') {
+        starting = false;
+        stopping = false;
+      }
     }
 
     start.addEventListener('click', event => {
@@ -79,8 +90,8 @@
   function cleanAudioPanel(panel) {
     const title = panel.querySelector('.rx-audio-head .label');
     if (title) title.textContent = 'DMR RX AUDIO';
-    removeNode(panel.querySelector('.rx-audio-head .panel-note'));
-    removeNode($('rxAudioNote'));
+    hideNode(panel.querySelector('.rx-audio-head .panel-note'));
+    hideNode($('rxAudioNote'));
 
     const grid = panel.querySelector('.rx-audio-grid');
     if (grid && !$('rxAudioAdvanced')) {
@@ -113,22 +124,27 @@
     if (header) {
       const eyebrow = header.querySelector('.eyebrow');
       if (eyebrow) eyebrow.textContent = 'YWD HOTSPOT · DMR RECEIVE';
-      removeNode(header.querySelector('p'));
+      hideNode(header.querySelector('p'));
     }
-    removeNode($('notice'));
+
+    // The base monitor writes status/capture messages to #notice, so keep the
+    // node alive even though production polish does not show it by default.
+    hideNode($('notice'));
 
     const cursorCard = $('cursorValue')?.closest('article');
-    if (cursorCard) cursorCard.hidden = true;
+    if (cursorCard) hideNode(cursorCard);
 
     const ambe = document.querySelector('.ambe-panel');
     const frames = document.querySelector('.frame-panel');
     if (ambe && frames && !$('rxMonitorDiagnostics')) {
       const ambeTitle = ambe.querySelector('.panel-head .label');
       if (ambeTitle) ambeTitle.textContent = 'CAPTURE & FEC';
-      ambe.querySelectorAll('.panel-note,.ambe-note').forEach(removeNode);
+      // #ambeNote is continuously updated by renderAmbe(). Hide, never remove.
+      ambe.querySelectorAll('.panel-note,.ambe-note').forEach(hideNode);
       const frameTitle = frames.querySelector('.panel-head .label');
       if (frameTitle) frameTitle.textContent = 'RECENT DMR VOICE FRAMES';
-      frames.querySelectorAll('.panel-note').forEach(removeNode);
+      // #frameNote is continuously updated by renderFrames(). Hide, never remove.
+      frames.querySelectorAll('.panel-note').forEach(hideNode);
 
       const details = document.createElement('details');
       details.id = 'rxMonitorDiagnostics';
