@@ -9,7 +9,7 @@ DECODER="$PHASE3D/generated/ywd-mbelib.js"
 STAGE_ROOT="$HERE/stage"
 STAGE="$STAGE_ROOT/dmr-rx-monitor"
 DIST="$ROOT/dist"
-VERSION="0.4.0-alpha6.1"
+VERSION="0.4.0-alpha7"
 CONFIG_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/ywd-hotspot-plugins/build.json"
 DEFAULT_CORE="$(cd "$ROOT/.." && pwd)/ywd-hotspot"
 MAX_UI_JS=$((256 * 1024))
@@ -63,7 +63,7 @@ stage=pathlib.Path(sys.argv[1]); version=sys.argv[2]
 manifest_path=stage/'plugin.json'
 manifest=json.loads(manifest_path.read_text())
 manifest['version']=version
-manifest['description']='Passive DMR receive monitor with stable live browser-side AMBE+2 audio, AUTO timeslot/call selection, maintained jitter reservoir, capture/FEC diagnostics, and a production-polished RX interface. No direct RF, serial, MQTT, or network access.'
+manifest['description']='Passive DMR receive monitor with stable live browser-side AMBE+2 audio, AUTO timeslot/call selection, maintained jitter reservoir, capture/FEC diagnostics, and a clean production-style RX interface. No direct RF, serial, MQTT, or network access.'
 manifest_path.write_text(json.dumps(manifest, indent=2) + '\n')
 
 ui_path=stage/'ui.js'
@@ -91,9 +91,9 @@ css += (stage/'live-audio.css').read_text()
 css_path.write_text(css)
 PY
 
-# Keep the proven alpha5 audio engine byte-for-byte unchanged. Alpha6.1 keeps
-# the alpha6 presentation controller, but hidden runtime-owned DOM nodes remain
-# present so the proven base monitor/player can continue updating them safely.
+# Keep the physically proven alpha5 audio engine byte-for-byte unchanged.
+# Alpha7 advances only presentation: a quieter operator view, 150/170 ms fine
+# buffer choices, a prominent current route, and collapsed diagnostics.
 cat "$STAGE/ywd-mbelib.js" "$STAGE/live-audio.js" "$STAGE/live-audio-polish.js" "$STAGE/ui.js" > "$STAGE/ui.combined.js"
 mv "$STAGE/ui.combined.js" "$STAGE/ui.js"
 rm -f "$STAGE/live-audio.js" "$STAGE/live-audio-polish.js" "$STAGE/live-audio.css" "$STAGE/ywd-mbelib.js"
@@ -136,7 +136,6 @@ echo "     plugin : dmr-rx-monitor v$VERSION"
 echo "     output : $OUT"
 echo "     core   : $CORE"
 echo
-echo "Paired core baseline is Alpha22.6.1 WebUI polish; RF/audio transport remains Alpha22.5 behavior."
-echo "RX alpha6.1 keeps the proven alpha5 audio engine unchanged."
-echo "Production polish now hides runtime-owned nodes instead of deleting them."
-echo "START/STOP remains a single toggle; technical diagnostics remain collapsed by default."
+echo "Paired core target is Alpha22.7 with transactional plugin install/update support."
+echo "RX alpha7 keeps the proven alpha5 audio engine unchanged and finishes the operator-view polish."
+echo "Use alpha7 as the first in-place UPDATE PLUGIN test from the installed alpha6.1 package."
