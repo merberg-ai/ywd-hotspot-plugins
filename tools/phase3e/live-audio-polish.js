@@ -3,9 +3,8 @@
   const $ = id => document.getElementById(id);
 
   // Presentation polish must never remove nodes owned by the proven alpha5
-  // player or the underlying RX Monitor UI. Several of those nodes are updated
-  // continuously without null checks. Hide them instead so the runtime DOM
-  // contract remains intact while the normal operator view stays clean.
+  // player or underlying RX Monitor UI. Hide them so runtime DOM contracts stay
+  // intact while the operator-facing page remains clean.
   function hideNode(node) {
     if (!node) return;
     node.hidden = true;
@@ -15,6 +14,22 @@
 
   function articleFor(id) {
     return $(id)?.closest('article') || null;
+  }
+
+  function addBufferTargets() {
+    const select = $('rxAudioTarget');
+    if (!select || select.dataset.rxFineTargets === '1') return;
+    select.dataset.rxFineTargets = '1';
+    const selected = select.value;
+    for (const value of [150, 170]) {
+      if (!Array.from(select.options).some(option => Number(option.value) === value)) {
+        select.add(new Option(`${value} ms`, String(value)));
+      }
+    }
+    Array.from(select.options)
+      .sort((a, b) => Number(a.value) - Number(b.value))
+      .forEach(option => select.appendChild(option));
+    if (Array.from(select.options).some(option => option.value === selected)) select.value = selected;
   }
 
   function installAudioToggle(panel) {
@@ -78,7 +93,7 @@
       start.classList.add('working');
       start.setAttribute('aria-busy', 'true');
       start.textContent = 'STARTING…';
-      // Allow alpha5's proven START AUDIO listener to run normally.
+      // Allow the proven alpha5 START AUDIO listener to run normally.
       setTimeout(sync, 80);
       setTimeout(sync, 350);
     }, true);
@@ -92,6 +107,13 @@
     if (title) title.textContent = 'DMR RX AUDIO';
     hideNode(panel.querySelector('.rx-audio-head .panel-note'));
     hideNode($('rxAudioNote'));
+    addBufferTargets();
+
+    const route = $('rxAudioRoute');
+    if (route) {
+      route.classList.add('rx-audio-route-primary');
+      if (route.textContent.trim() === '—') route.textContent = 'Waiting for audio route…';
+    }
 
     const grid = panel.querySelector('.rx-audio-grid');
     if (grid && !$('rxAudioAdvanced')) {
@@ -127,23 +149,29 @@
       hideNode(header.querySelector('p'));
     }
 
-    // The base monitor writes status/capture messages to #notice, so keep the
-    // node alive even though production polish does not show it by default.
+    // Base monitor writers still target these nodes. Keep them alive but hidden.
     hideNode($('notice'));
+    hideNode($('cursorValue')?.closest('article'));
+    hideNode($('totalCount')?.closest('article'));
+    hideNode($('rfCount')?.closest('article'));
 
-    const cursorCard = $('cursorValue')?.closest('article');
-    if (cursorCard) hideNode(cursorCard);
+    const hero = document.querySelector('.hero-grid');
+    if (hero) hero.classList.add('rx-hero-polished');
+    const lastCard = $('lastRoute')?.closest('article');
+    if (lastCard) {
+      lastCard.classList.add('rx-last-heard-card');
+      const label = lastCard.querySelector('.label');
+      if (label) label.textContent = 'LAST HEARD';
+    }
 
     const ambe = document.querySelector('.ambe-panel');
     const frames = document.querySelector('.frame-panel');
     if (ambe && frames && !$('rxMonitorDiagnostics')) {
       const ambeTitle = ambe.querySelector('.panel-head .label');
       if (ambeTitle) ambeTitle.textContent = 'CAPTURE & FEC';
-      // #ambeNote is continuously updated by renderAmbe(). Hide, never remove.
       ambe.querySelectorAll('.panel-note,.ambe-note').forEach(hideNode);
       const frameTitle = frames.querySelector('.panel-head .label');
       if (frameTitle) frameTitle.textContent = 'RECENT DMR VOICE FRAMES';
-      // #frameNote is continuously updated by renderFrames(). Hide, never remove.
       frames.querySelectorAll('.panel-note').forEach(hideNode);
 
       const details = document.createElement('details');
@@ -159,8 +187,8 @@
   function polish() {
     const panel = $('rxAudioPanel');
     if (!panel) return false;
-    if (panel.dataset.rxProductionPolish === '1') return true;
-    panel.dataset.rxProductionPolish = '1';
+    if (panel.dataset.rxProductionPolish === '2') return true;
+    panel.dataset.rxProductionPolish = '2';
     cleanAudioPanel(panel);
     cleanMonitorShell();
     return true;
