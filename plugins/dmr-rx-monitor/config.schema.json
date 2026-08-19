@@ -18,6 +18,13 @@
       "help": "Show the 33-byte DMR frame payload as hexadecimal for bridge testing."
     },
     {
+      "key": "show_ambe_hex",
+      "type": "boolean",
+      "label": "Show AMBE channel blocks",
+      "default": false,
+      "help": "Show the three de-interleaved 72-bit coded AMBE+2 channel/FEC blocks extracted from the most recent DMR voice burst."
+    },
+    {
       "key": "source_filter",
       "type": "select",
       "label": "Frame source",
