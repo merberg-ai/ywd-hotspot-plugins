@@ -1,6 +1,7 @@
 # Local build output
 dist/
 *.ywdplugin
+tools/phase3d/generated/
 
 # Local RX Monitor captures / decoded audio
 # Captures may contain DMR IDs and recovered digital voice payloads.

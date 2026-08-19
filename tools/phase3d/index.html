@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>YWD RX Monitor Phase 3D</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="shell">
+    <header>
+      <div class="eyebrow">YWD RX MONITOR · PHASE 3D</div>
+      <h1>Browser AMBE Decode Proof</h1>
+      <p>Decode the proven Phase 3B capture entirely in the browser, then play the resulting 8 kHz PCM through Web Audio. Nothing is sent to the hotspot.</p>
+    </header>
+
+    <section class="card">
+      <div class="label">CAPTURE</div>
+      <input id="captureFile" type="file" accept="application/json,.json">
+      <div class="capture-name" id="captureName">No capture loaded</div>
+      <div class="hint" id="captureMeta">Use the same ywd-dmr-rx-capture-*.json that passed Phase 3C.</div>
+    </section>
+
+    <section class="grid">
+      <article class="card">
+        <div class="label">PATH</div>
+        <select id="pathSelect">
+          <option value="network" selected>NETWORK</option>
+          <option value="rf">RF</option>
+          <option value="all">ALL / diagnostic only</option>
+        </select>
+        <button id="decodeBtn" disabled>DECODE IN BROWSER</button>
+      </article>
+      <article class="card">
+        <div class="label">AUDIO</div>
+        <div class="audio-row">
+          <button id="playBtn" disabled>START AUDIO</button>
+          <button id="stopBtn" disabled>STOP</button>
+        </div>
+        <div class="volume-row"><span>VOLUME</span><input id="volume" type="range" min="0" max="1" value="0.70" step="0.01"><b id="volumeValue">70%</b></div>
+        <div class="audio-state">STATE <b id="audioState">IDLE</b></div>
+      </article>
+    </section>
+
+    <section class="stats">
+      <article><span>FRAMES</span><b id="framesValue">—</b></article>
+      <article><span>DURATION</span><b id="durationValue">—</b></article>
+      <article><span>PEAK</span><b id="peakValue">—</b></article>
+      <article><span>RMS</span><b id="rmsValue">—</b></article>
+      <article><span>DECODER RESETS</span><b id="resetValue">—</b></article>
+      <article><span>DECODER ERRORS</span><b id="errorValue">—</b></article>
+    </section>
+
+    <div id="status" class="status">Loading browser decoder…</div>
+
+    <section class="card note">
+      <div class="label">PASS CRITERION</div>
+      <p>NETWORK audio should contain recognizable speech similar to the Phase 3C WAV. Mild AMBE/mbelib robotic character or background artifacts are acceptable at this proof stage.</p>
+      <p>This harness deliberately ignores capture timestamps. One recovered AMBE frame is always treated as 20 ms / 160 PCM samples at 8 kHz.</p>
+    </section>
+  </main>
+  <script src="generated/ywd-mbelib.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
