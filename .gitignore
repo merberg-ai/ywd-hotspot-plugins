@@ -2,6 +2,11 @@
 dist/
 *.ywdplugin
 
+# Local RX Monitor captures / decoded audio
+# Captures may contain DMR IDs and recovered digital voice payloads.
+ywd-dmr-rx-capture-*.json
+*.wav
+
 # Private signing keys / SSH keys
 *.pem
 *.key
