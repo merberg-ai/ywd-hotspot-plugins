@@ -6,41 +6,52 @@ Phase 3C proved offline mbelib decode to 8 kHz mono PCM WAV. Phase 3D proved the
 
 The live candidate keeps the existing `read:dmr-voice` trusted bridge. MMDVM-Host remains the sole modem owner. The plugin still has no serial, MQTT, arbitrary network, filesystem, service, microphone/camera, USB, or RF-TX access. AMBE FEC recovery and mbelib speech synthesis run in the browser.
 
-Core Alpha22.2 introduced one narrow browser permission: the sandboxed frame for an enabled UI plugin that already has `read:dmr-voice` may compile WebAssembly using CSP `wasm-unsafe-eval`. Alpha22.3 fixed the buffered subscriber drain. Alpha22.5 moves whole-ring JSON snapshot serialization into a separate nice'd writer process so the MQTT ingestion interpreter is not occupied by full-ring `json.dump()` work while voice bursts are waiting. Alpha22.5 is intentionally unchanged for the alpha4 browser-playout test.
+Core Alpha22.2 introduced one narrow browser permission: the sandboxed frame for an enabled UI plugin that already has `read:dmr-voice` may compile WebAssembly using CSP `wasm-unsafe-eval`. Alpha22.3 fixed the buffered subscriber drain. Alpha22.5 moved whole-ring JSON snapshot serialization into a separate nice'd writer process. Alpha22.5 remains intentionally unchanged for the alpha5 browser-playout test.
 
 ## Candidate design
 
-The normal RX Monitor v0.3.0 source remains the proven repository baseline. `BUILD-LIVE-CANDIDATE.sh` creates a temporary staged v0.4.0-alpha4 package by:
+The normal RX Monitor v0.3.0 source remains the proven repository baseline. `BUILD-LIVE-CANDIDATE.sh` creates a temporary staged v0.4.0-alpha5 package by:
 
 1. reusing/building the exact Phase 3D pinned mbelib browser bundle;
-2. patching the proven Phase 3B recovery loop with a browser-memory AMBE49 handoff hook;
+2. patching the proven Phase 3B recovery loop with a browser-memory AMBE49 handoff that now also carries the bridge `received_at` timestamp;
 3. keeping adaptive polling at 250 ms while audio is stopped and 100 ms while START AUDIO is active;
-4. keeping AUTO single-call route locking, but shortening lock release to 450 ms of silence;
-5. decoding every AMBE frame normally so mbelib vocoder state stays continuous;
-6. coalescing five decoded 20 ms PCM frames into one 100 ms / 800-sample Web Audio chunk;
-7. scheduling roughly 10 AudioBufferSource nodes per second instead of roughly 50 per second;
-8. reporting the browser AudioContext sample rate, chunk size, chunk count, buffer depth, underruns, decoder errors, resets, and active route;
-9. prepending the browser decoder and `live-audio.js` to the normal signed `ui.js` and validating/signing the staged plugin while enforcing the existing 256 KiB UI-script limit.
+4. decoding every AMBE frame normally so mbelib vocoder state stays continuous;
+5. keeping five decoded 20 ms PCM frames per normal 100 ms Web Audio chunk;
+6. actively regulating the scheduled-audio reservoir around the selected jitter target with playback-rate correction capped at +/-2%;
+7. flushing partial old-call PCM chunks at normal call transitions instead of discarding them;
+8. making AUTO follow a different caller/route on the same DMR timeslot immediately while retaining the 450 ms bridge-time guard before moving to the other timeslot;
+9. preserving already-scheduled old-call audio during normal handoffs so the next call appends after the current tail instead of stopping all Web Audio nodes;
+10. allowing a hard re-anchor only at a real route/gap boundary if scheduled depth exceeds the selected target by more than 400 ms;
+11. reporting browser AUDIO RATE, CHUNK size/count, PLAY RATE, AUTO HANDOFFS, REANCHORS, buffer depth, underruns, decoder errors, resets, and the active route;
+12. prepending the browser decoder and `live-audio.js` to the normal signed `ui.js` and validating/signing the staged plugin while enforcing the existing 256 KiB UI-script limit.
 
 No generated mbelib bundle, WAV, capture, private key, or staged package source is committed.
 
-## Chunked PCM scheduler
+## Maintained playout reservoir
 
-AMBE+2 remains a 20 ms / 160-sample decode clock at 8 kHz. Alpha4 does not alter that decoder cadence. Instead, five consecutive decoded PCM frames are joined into one 100 ms / 800-sample chunk before being submitted to Web Audio.
+Alpha4 proved that 100 ms chunking materially improves live audio, but long calls could let scheduled depth drift far above the selected jitter target. Alpha5 treats the selected target as a maintained reservoir instead of startup lead only.
 
-The selected jitter target is treated as scheduled-audio lead. For a 140 ms target, a newly primed 100 ms chunk starts about 40 ms in the future and leaves about 140 ms of scheduled audio depth after insertion. Subsequent chunks are placed contiguously on the same AudioContext timeline. This reduces per-node scheduling/resampling boundaries without forcing a larger operator-visible jitter setting.
+For each chunk, the scheduler compares projected scheduled depth with the selected target. Inside a small deadband playback stays exactly 1.000x. If the queue grows too deep, upcoming chunks may run slightly faster; if it becomes shallow, upcoming chunks may run slightly slower. Correction is capped at 0.980x to 1.020x.
 
-When a call gap, route change, source change, slot change, or jitter-target change resets the live pipeline, any already-scheduled old-route audio nodes are stopped so buffered tail audio cannot overlap the next route.
+The operator-visible `PLAY RATE` diagnostic shows the current correction. Normal operation should stay close to 1.000x. A large accumulated queue may be discarded only at a real call boundary when it exceeds the selected target by more than 400 ms; these events increment `REANCHORS`.
 
-## AUTO call lock
+## Non-destructive call transitions
 
-`AUTO` remains the default slot mode. The first eligible live route becomes the playback lock. Frames from simultaneous traffic on the other timeslot are ignored for audio instead of resetting mbelib and the jitter buffer. After the locked route has been quiet for about 450 ms, the next eligible route may acquire the lock. Manual TS1 and TS2 choices remain available.
+Normal route changes, call gaps, and decoder resets no longer stop all already-scheduled audio. Any partial one-to-four-frame PCM chunk from the old call is flushed as a short Web Audio buffer, mbelib is reset for the new stream, and new-call chunks append after the existing scheduled tail.
 
-The capture/export path is unchanged and may still contain both timeslots; AUTO affects only live playback.
+This removes the repeated 20-80 ms syllable loss seen when alpha4 discarded partial chunks at every stream reset.
+
+## AUTO call selection
+
+`AUTO` remains the default slot mode. Call decisions now use the bridge frame timestamp rather than browser callback timing.
+
+A different route on the same DMR timeslot is treated as a real caller handoff and becomes active immediately. Traffic on the other timeslot may be simultaneous, so AUTO only crosses TS1/TS2 after the locked route has been quiet for about 450 ms in bridge time.
+
+Manual TS1 and TS2 choices remain available. Capture/export is unchanged and may still contain both timeslots; AUTO affects only live playback.
 
 ## Live controls
 
-The candidate provides explicit `START AUDIO` / `STOP AUDIO`, NETWORK/RF/ALL source selection, AUTO/TS1/TS2 slot selection, 120/140/160/200/240 ms jitter-buffer targets, volume, mute, live buffer depth, adaptive poll interval, browser AUDIO RATE, CHUNK size, CHUNKS scheduled, underrun count, decoder error count, stream reset count, and the active route.
+The candidate provides explicit `START AUDIO` / `STOP AUDIO`, NETWORK/RF/ALL source selection, AUTO/TS1/TS2 slot selection, 120/140/160/200/240 ms jitter-buffer targets, volume, mute, live buffer depth, adaptive poll interval, browser AUDIO RATE, CHUNK size, CHUNKS scheduled, PLAY RATE, HANDOFFS, REANCHORS, underrun count, decoder error count, stream reset count, and the active route.
 
 The default source is NETWORK, slot mode is AUTO, and jitter target is 160 ms. Audio never starts automatically.
 
@@ -59,19 +70,19 @@ bash tools/phase3e/BUILD-LIVE-CANDIDATE.sh
 Expected signed package:
 
 ```text
-dist/dmr-rx-monitor-0.4.0-alpha4.ywdplugin
+dist/dmr-rx-monitor-0.4.0-alpha5.ywdplugin
 ```
 
 ## Hotspot test order
 
-1. Leave YWD-Hotspot core on Alpha22.5; no new core update is required for this candidate.
-2. Confirm normal RF/BrandMeister state, saved static TGs, and duplex TG controls remain correct.
-3. Replace RX Monitor alpha3 with v0.4.0-alpha4.
-4. Start with NETWORK / AUTO / 160 ms and press START AUDIO.
-5. Confirm POLL changes from 250 ms to 100 ms, CHUNK shows `100 ms / 5f`, and AUDIO RATE shows the browser output rate.
-6. Listen through several calls and watch BUFFER / UNDERRUNS / STREAM RESETS.
-7. Repeat at the previously promising 140 ms target.
-8. Compare AUTO with manual TS1 or TS2 on a busy talkgroup.
-9. Export a new capture if audible garble or rebuffering remains.
+1. Leave YWD-Hotspot core on Alpha22.5; no core update is required.
+2. Replace RX Monitor alpha4 with v0.4.0-alpha5.
+3. Start with NETWORK / manual TS2 or TS1 / 160 ms, then try 140 ms.
+4. Confirm POLL is 100 ms, CHUNK is `100 ms / 5f`, AUDIO RATE is the browser output rate, and PLAY RATE stays near 1.000x.
+5. During a long call, watch BUFFER. It should remain near the selected target instead of climbing into many hundreds of milliseconds.
+6. Switch to NETWORK / AUTO / 160 ms, then 140 ms.
+7. On a busy talkgroup, confirm caller changes on the same timeslot are heard immediately instead of losing the first ~450 ms.
+8. Watch HANDOFFS / REANCHORS / UNDERRUNS / STREAM RESETS and note any audible chop at transitions.
+9. Export another capture if audio remains garbled or buffer depth still runs away.
 
 RF-side audio validation is still required before promoting the live-audio candidate to the canonical plugin source.
