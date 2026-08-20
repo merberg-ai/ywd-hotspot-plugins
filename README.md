@@ -19,8 +19,8 @@ The plugin repository itself keeps plugin source/examples separate from trusted 
 ## Layout
 
 ```text
-plugins/       plugin source and focused validation plugins
-examples/      harmless/reference packages
+plugins/       user-facing/candidate plugin source
+examples/      harmless framework validation packages
 docs/          plugin-development notes
 tools/         RX decoder/audio development tooling
 dist/          local build output; ignored
@@ -124,7 +124,7 @@ Never commit a signing private key.
 
 ## Reference packages
 
-`ui-smoke-test` and `examples/upload-smoke-test` exist to validate framework behavior, not as end-user features. The UI smoke test is a cleanup candidate for movement into examples/test fixtures once the current core pre-main hardening has been physically validated.
+`examples/ui-smoke-test` and `examples/upload-smoke-test` are retained as framework validation fixtures, not end-user features. Keeping them under `examples/` prevents proof packages from looking like promoted plugins while preserving reproducible lifecycle/sandbox tests.
 
 ## Safety contract
 
