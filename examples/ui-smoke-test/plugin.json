@@ -1,0 +1,23 @@
+{
+  "api": 1,
+  "id": "ui-smoke-test",
+  "name": "Plugin UI Smoke Test",
+  "version": "0.1.0",
+  "description": "Harmless signed browser-UI plugin used to validate YWD Plugin UI v1 navigation, sandboxing, bridge state, configuration, and lifecycle behavior.",
+  "trust": "experimental",
+  "kind": "ui",
+  "provider": "browser-ui",
+  "capabilities": [
+    "ui:section"
+  ],
+  "rf_mode": false,
+  "config_schema": "config.schema.json",
+  "dependencies": [],
+  "hardware": [],
+  "ui": {
+    "api": 1,
+    "label": "UI TEST",
+    "script": "ui.js",
+    "style": "ui.css"
+  }
+}
