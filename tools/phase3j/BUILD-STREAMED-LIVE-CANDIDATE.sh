@@ -8,7 +8,7 @@ PHASE3E="$ROOT/tools/phase3e"
 STAGE_ROOT="$HERE/stage"
 STAGE="$STAGE_ROOT/dmr-rx-monitor"
 DIST="$ROOT/dist"
-VERSION="0.4.0-alpha16"
+VERSION="0.4.0-alpha17"
 CONFIG_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/ywd-hotspot-plugins/build.json"
 DEFAULT_CORE="$(cd "$ROOT/.." && pwd)/ywd-hotspot"
 MAX_UI_JS=$((256 * 1024))
@@ -59,7 +59,7 @@ required_dep='mmdvm-cap-demand-gated-dmr-voice'
 if required_dep not in set(manifest.get('dependencies') or []):
     raise SystemExit(f'canonical RX manifest is missing dependency: {required_dep}')
 manifest['version']=version
-manifest['description']='Passive DMR RX Monitor with trusted frame diagnostics plus Phase 3J streamed PCM audio. Live audio recovery, bounded 10-frame batching, and external YWD Vocoder Protocol v1 decode run in trusted core; the sandbox receives PCM stream events only. The plugin contains no AMBE software vocoder and has no direct RF, serial, MQTT, or network access.'
+manifest['description']='Passive DMR RX Monitor with trusted frame diagnostics plus Phase 3J streamed PCM audio. Live audio recovery, bounded 10-frame batching, and external YWD Vocoder Protocol v1 decode run in trusted core; the sandbox receives PCM stream events only. Alpha17 widens the browser playback reservoir to tolerate normal chunk-arrival jitter without aggressive reanchors. The plugin contains no AMBE software vocoder and has no direct RF, serial, MQTT, or network access.'
 manifest_path.write_text(json.dumps(manifest, indent=2) + '\n')
 
 ui_path=stage/'ui.js'
@@ -86,9 +86,16 @@ fi
 if ! grep -q 'startRxAudioStream' "$STAGE/ui.js"; then
   fail "Phase 3J streamed audio API hook is missing"
 fi
+if ! grep -q 'DEFAULT_BUFFER_MS = 320' "$STAGE/ui.js"; then
+  fail "Alpha17 320 ms browser reservoir default is missing"
+fi
+if ! grep -q 'MAX_SCHEDULED_DEPTH_MS = 700' "$STAGE/ui.js"; then
+  fail "Alpha17 700 ms browser reservoir ceiling is missing"
+fi
 
 echo "[OK] No embedded AMBE decoder material"
 echo "[OK] Legacy browser poll/decode audio worker absent"
+echo "[OK] Alpha17 browser reservoir: 320 ms default / 700 ms ceiling"
 UI_BYTES="$(wc -c < "$STAGE/ui.js")"
 echo "[Phase3J] Combined ui.js : $UI_BYTES bytes"
 if (( UI_BYTES > MAX_UI_JS )); then
@@ -130,5 +137,5 @@ echo "     output    : $OUT"
 echo "     core      : $CORE"
 echo "     audio     : one trusted NDJSON PCM stream"
 echo "     batching  : trusted core 10 frames / 200 ms"
-echo "     browser   : PCM scheduling only; diagnostics polling remains separate"
+echo "     browser   : 320 ms default reservoir; 700 ms emergency ceiling"
 echo "     decoder   : NONE (external YWD Vocoder Protocol v1 backend only)"
