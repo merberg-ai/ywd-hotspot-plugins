@@ -60,7 +60,7 @@ required_dep='mmdvm-cap-demand-gated-dmr-voice'
 if required_dep not in set(manifest.get('dependencies') or []):
     raise SystemExit(f'canonical RX manifest is missing dependency: {required_dep}')
 manifest['version']=version
-manifest['description']='Passive DMR RX Monitor with trusted frame diagnostics plus Phase 3J streamed PCM audio. Live audio recovery, bounded 10-frame batching, and external YWD Vocoder Protocol v1 decode run in trusted core; the sandbox receives PCM stream events only. Alpha19 keeps the proven 400 ms reservoir and gentle clock correction while preserving already-buffered PCM across normal decoder-state resets; explicit drop/error events still rebuffer. The plugin contains no AMBE software vocoder and has no direct RF, serial, MQTT, or network access.'
+manifest['description']='Passive DMR RX Monitor with Phase 3J streamed PCM audio. Trusted core handles DMR recovery, 10-frame batching, and external YWD Vocoder Protocol v1 decode; the sandbox receives PCM only. Alpha19 keeps the 400 ms reservoir and gentle clock correction, preserves buffered PCM across normal decoder-state resets, and re-buffers only on explicit drop/error events. No AMBE software vocoder is bundled.'
 manifest_path.write_text(json.dumps(manifest, indent=2) + '\n')
 
 ui_path=stage/'ui.js'
