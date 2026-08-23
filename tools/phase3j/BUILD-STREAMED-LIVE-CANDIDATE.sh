@@ -8,7 +8,7 @@ PHASE3E="$ROOT/tools/phase3e"
 STAGE_ROOT="$HERE/stage"
 STAGE="$STAGE_ROOT/dmr-rx-monitor"
 DIST="$ROOT/dist"
-VERSION="0.4.0-alpha19"
+VERSION="0.4.0-alpha20"
 CONFIG_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/ywd-hotspot-plugins/build.json"
 DEFAULT_CORE="$(cd "$ROOT/.." && pwd)/ywd-hotspot"
 MAX_UI_JS=$((256 * 1024))
@@ -21,6 +21,7 @@ for cmd in python3 openssl; do need "$cmd"; done
 [[ -s "$HERE/streamed-live-audio.js" ]] || fail "Missing streamed-live-audio.js"
 [[ -s "$HERE/stream-polish.js" ]] || fail "Missing stream-polish.js"
 [[ -s "$HERE/alpha19-playout-patch.py" ]] || fail "Missing alpha19-playout-patch.py"
+[[ -s "$HERE/alpha20-elasticity-patch.py" ]] || fail "Missing alpha20-elasticity-patch.py"
 [[ -s "$PHASE3E/live-audio.css" ]] || fail "Missing live-audio.css"
 
 mapfile -t cfg < <(python3 - "$CONFIG_FILE" "$DEFAULT_CORE" <<'PY'
@@ -60,7 +61,7 @@ required_dep='mmdvm-cap-demand-gated-dmr-voice'
 if required_dep not in set(manifest.get('dependencies') or []):
     raise SystemExit(f'canonical RX manifest is missing dependency: {required_dep}')
 manifest['version']=version
-manifest['description']='Passive DMR RX Monitor with Phase 3J streamed PCM audio. Trusted core handles DMR recovery, 10-frame batching, and external YWD Vocoder Protocol v1 decode; the sandbox receives PCM only. Alpha19 keeps the 400 ms reservoir and gentle clock correction, preserves buffered PCM across normal decoder-state resets, and re-buffers only on explicit drop/error events. No AMBE software vocoder is bundled.'
+manifest['description']='Passive DMR RX Monitor with Phase 3J streamed PCM audio. Trusted core handles DMR recovery, 10-frame batching, and external YWD Vocoder Protocol v1 decode; the sandbox receives PCM only. Alpha20 keeps the 400 ms target and reset-tolerant playout, widens emergency scheduled depth to 900 ms for backlog recovery, and re-buffers only on explicit drop/error events. No AMBE software vocoder is bundled.'
 manifest_path.write_text(json.dumps(manifest, indent=2) + '\n')
 
 ui_path=stage/'ui.js'
@@ -74,6 +75,7 @@ PY
 
 cat "$HERE/streamed-live-audio.js" "$HERE/stream-polish.js" >> "$STAGE/ui.js"
 python3 "$HERE/alpha19-playout-patch.py" "$STAGE/ui.js"
+python3 "$HERE/alpha20-elasticity-patch.py" "$STAGE/ui.js"
 cat "$PHASE3E/live-audio.css" >> "$STAGE/ui.css"
 
 if find "$STAGE" -type f \( -iname '*mbelib*' -o -name '*.wasm' \) -print -quit | grep -q .; then
@@ -89,32 +91,32 @@ if ! grep -q 'startRxAudioStream' "$STAGE/ui.js"; then
   fail "Phase 3J streamed audio API hook is missing"
 fi
 if ! grep -q 'DEFAULT_BUFFER_MS = 400' "$STAGE/ui.js"; then
-  fail "Alpha19 400 ms browser reservoir default is missing"
+  fail "Alpha20 400 ms browser reservoir default is missing"
 fi
-if ! grep -q 'MAX_SCHEDULED_DEPTH_MS = 700' "$STAGE/ui.js"; then
-  fail "Alpha19 700 ms browser reservoir ceiling is missing"
+if ! grep -q 'MAX_SCHEDULED_DEPTH_MS = 900' "$STAGE/ui.js"; then
+  fail "Alpha20 900 ms browser reservoir ceiling is missing"
 fi
 if ! grep -q 'RESERVOIR_DEADBAND_MS = 40' "$STAGE/ui.js"; then
-  fail "Alpha19 40 ms reservoir deadband is missing"
+  fail "Alpha20 40 ms reservoir deadband is missing"
 fi
 if ! grep -q 'RESERVOIR_GAIN_MS = 6000' "$STAGE/ui.js"; then
-  fail "Alpha19 gentler reservoir gain is missing"
+  fail "Alpha20 gentler reservoir gain is missing"
 fi
 if ! grep -q 'MIN_PLAYBACK_RATE = 0.99' "$STAGE/ui.js" || ! grep -q 'MAX_PLAYBACK_RATE = 1.01' "$STAGE/ui.js"; then
-  fail "Alpha19 +/-1 percent playback correction bounds are missing"
+  fail "Alpha20 +/-1 percent playback correction bounds are missing"
 fi
 if ! grep -q 'Decoder state resets are normal at DMR talker/route boundaries' "$STAGE/ui.js"; then
-  fail "Alpha19 reset-tolerant playout patch is missing"
+  fail "Alpha20 reset-tolerant playout patch is missing"
 fi
 if ! grep -q '>HEARTBEATS<' "$STAGE/ui.js"; then
-  fail "Alpha19 heartbeat label is missing"
+  fail "Alpha20 heartbeat label is missing"
 fi
 
 echo "[OK] No embedded AMBE decoder material"
 echo "[OK] Legacy browser poll/decode audio worker absent"
-echo "[OK] Alpha19 browser reservoir: 400 ms default / 700 ms ceiling"
-echo "[OK] Alpha19 playback correction: +/-1% with 40 ms deadband"
-echo "[OK] Alpha19 preserves buffered PCM across decoder-state resets"
+echo "[OK] Alpha20 browser reservoir: 400 ms default / 900 ms emergency ceiling"
+echo "[OK] Alpha20 playback correction: +/-1% with 40 ms deadband"
+echo "[OK] Alpha20 preserves buffered PCM across decoder-state resets"
 UI_BYTES="$(wc -c < "$STAGE/ui.js")"
 echo "[Phase3J] Combined ui.js : $UI_BYTES bytes"
 if (( UI_BYTES > MAX_UI_JS )); then
@@ -156,5 +158,5 @@ echo "     output    : $OUT"
 echo "     core      : $CORE"
 echo "     audio     : one trusted NDJSON PCM stream"
 echo "     batching  : trusted core 10 frames / 200 ms"
-echo "     browser   : 400 ms reservoir; reset-tolerant playout; gentle +/-1% correction"
+echo "     browser   : 400 ms target; 900 ms emergency ceiling; reset-tolerant; gentle +/-1% correction"
 echo "     decoder   : NONE (external YWD Vocoder Protocol v1 backend only)"
