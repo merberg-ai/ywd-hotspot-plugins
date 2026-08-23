@@ -8,9 +8,9 @@ PHASE3E="$ROOT/tools/phase3e"
 PHASE3F="$ROOT/tools/phase3f"
 STAGE_ROOT="$HERE/stage"
 STAGE="$STAGE_ROOT/dmr-rx-monitor"
-AUDIO_JS="$STAGE_ROOT/external-live-audio-alpha12.js"
+AUDIO_JS="$STAGE_ROOT/external-live-audio-alpha13.js"
 DIST="$ROOT/dist"
-VERSION="0.4.0-alpha12"
+VERSION="0.4.0-alpha13"
 CONFIG_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/ywd-hotspot-plugins/build.json"
 DEFAULT_CORE="$(cd "$ROOT/.." && pwd)/ywd-hotspot"
 MAX_UI_JS=$((256 * 1024))
@@ -21,7 +21,7 @@ need() { command -v "$1" >/dev/null 2>&1 || fail "Required command not found: $1
 for cmd in python3 openssl; do need "$cmd"; done
 [[ -d "$PLUGIN_SRC" ]] || fail "RX Monitor source not found: $PLUGIN_SRC"
 [[ -s "$HERE/external-live-audio.js" ]] || fail "Missing external-live-audio.js"
-[[ -s "$HERE/stabilize-alpha12.js" ]] || fail "Missing stabilize-alpha12.js"
+[[ -s "$HERE/stabilize-alpha13.js" ]] || fail "Missing stabilize-alpha13.js"
 [[ -s "$PHASE3E/live-audio-polish.js" ]] || fail "Missing proven Phase 3E audio polish"
 [[ -s "$PHASE3E/live-audio.css" ]] || fail "Missing proven Phase 3E audio CSS"
 [[ -s "$PHASE3F/vocoder-diagnostics.js" ]] || fail "Missing proven Phase 3F vocoder diagnostics"
@@ -95,7 +95,7 @@ ui=ui.replace('Browser-side FEC, de-scrambling, continuity diagnostics, and boun
 ui_path.write_text(ui)
 PY
 
-# Keep the physically observed Alpha11 engine source intact. Stage Alpha12's
+# Keep the physically observed Alpha11 engine source intact. Stage Alpha13's
 # latency ceiling as a deterministic build-time patch so the Alpha11 partial
 # proof remains exactly reproducible from its checkpoint.
 python3 - "$HERE/external-live-audio.js" "$AUDIO_JS" <<'PY'
@@ -105,7 +105,7 @@ out=pathlib.Path(sys.argv[2])
 const_needle='  const HARD_REANCHOR_EXTRA_MS = 400;\n  const MAX_PENDING_FRAMES = 15;'
 const_repl='  const HARD_REANCHOR_EXTRA_MS = 400;\n  const MAX_SCHEDULED_DEPTH_MS = 300;\n  const MAX_PENDING_FRAMES = 15;'
 if src.count(const_needle) != 1:
-    raise SystemExit('Alpha12 audio constant patch point changed')
+    raise SystemExit('Alpha13 audio constant patch point changed')
 src=src.replace(const_needle, const_repl)
 queue_needle="""    if (!primed) {
       primeAndScheduleChunk(chunk, nominalMs);
@@ -128,14 +128,14 @@ queue_repl="""    if (!primed) {
     }
     if (nextAudioTime < audioCtx.currentTime + 0.005) {"""
 if src.count(queue_needle) != 1:
-    raise SystemExit('Alpha12 playout ceiling patch point changed')
+    raise SystemExit('Alpha13 playout ceiling patch point changed')
 src=src.replace(queue_needle, queue_repl)
 out.write_text(src)
 PY
 
 cat \
   "$AUDIO_JS" \
-  "$HERE/stabilize-alpha12.js" \
+  "$HERE/stabilize-alpha13.js" \
   "$PHASE3E/live-audio-polish.js" \
   "$PHASE3F/vocoder-diagnostics.js" \
   "$STAGE/ui.js" > "$STAGE/ui.combined.js"
@@ -194,6 +194,7 @@ echo "     output : $OUT"
 echo "     core   : $CORE"
 echo "     decoder: NONE (external YWD Vocoder Protocol v1 backend only)"
 echo
-echo "Alpha12 stabilization: sequence-gap remote resets suppressed; backend keepalive is active only while audio runs; decode/reset RTT is visible."
-echo "Alpha12 playout: browser scheduled depth is hard-capped at 300 ms; stale scheduled audio is reanchored instead of accumulating latency."
+echo "Alpha13 stabilization: sequence-gap remote resets suppressed; backend keepalive is active only while audio runs; decode/reset RTT is visible."
+echo "Alpha13 browser fix: removed Alpha12's self-triggering DOM MutationObserver loop."
+echo "Alpha13 playout: browser scheduled depth is hard-capped at 300 ms; stale scheduled audio is reanchored instead of accumulating latency."
 echo "Test goal: sustained real recovered AMBE49 traffic -> external fake backend -> continuous 440 Hz PCM -> browser audio."
