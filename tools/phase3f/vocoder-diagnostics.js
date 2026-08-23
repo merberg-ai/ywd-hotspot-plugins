@@ -132,10 +132,10 @@
     const started = performance.now();
     setBusy(true);
     setState('WARMING', 'active');
-    setNote('Warming the socket-activated backend with STATUS before the 300 ms live-DECODE test.');
+    setNote('Warming and resetting the socket-activated backend before the 300 ms live-DECODE test.');
     setDetails(null);
     try {
-      if (!window.ywdPlugin?.vocoderStatus || !window.ywdPlugin?.vocoderDecode) {
+      if (!window.ywdPlugin?.vocoderStatus || !window.ywdPlugin?.vocoderReset || !window.ywdPlugin?.vocoderDecode) {
         throw new Error('YWD vocoder bridge API is unavailable');
       }
 
@@ -145,9 +145,16 @@
         throw new Error(String(warm?.error || 'No compatible vocoder backend is available'));
       }
 
+      setState('RESETTING', 'active');
+      setNote('Backend available. Resetting decoder stream state before the live-DECODE proof.');
+      const reset = await window.ywdPlugin.vocoderReset();
+      if (reset?.ok !== true) {
+        throw new Error('Vocoder backend reset did not complete successfully');
+      }
+
       const decodeStarted = performance.now();
       setState('DECODING', 'active');
-      setNote(`Backend warm. Sending ${TEST_FRAMES} fixed zero AMBE49 frames under the normal 300 ms DECODE budget.`);
+      setNote(`Backend warm and reset. Sending ${TEST_FRAMES} fixed zero AMBE49 frames under the normal 300 ms DECODE budget.`);
       const result = await window.ywdPlugin.vocoderDecode(Array.from({length:TEST_FRAMES}, () => ZERO_AMBE49));
       const pass = decodePass(result);
       const decodeElapsed = elapsedText(decodeStarted);
@@ -161,9 +168,9 @@
       setText('vocoderDiagTest', `${result?.frame_count ?? '—'} frames`);
       setText('vocoderDiagPcm', `${result?.pcm_bytes ?? '—'} bytes${result?.pcm_sha256 ? ` · ${String(result.pcm_sha256).slice(0, 12)}…` : ''}`);
       setNote(pass
-        ? 'PASS: backend warm-up completed, then sandboxed RX Monitor received the expected 5-frame / 100 ms PCM result inside the normal live-DECODE budget.'
+        ? 'PASS: STATUS + RESET completed, then sandboxed RX Monitor received the expected 5-frame / 100 ms PCM result inside the normal live-DECODE budget.'
         : 'FAIL: the backend answered, but the PCM response shape did not match the protocol contract.');
-      setDetails({warmup:warm, decode:result});
+      setDetails({warmup:warm, reset, decode:result});
     } catch (error) {
       setState('ERROR', 'error');
       setText('vocoderDiagLatency', elapsedText(started));
