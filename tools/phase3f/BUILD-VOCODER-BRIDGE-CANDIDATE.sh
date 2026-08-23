@@ -111,9 +111,9 @@ python3 "$CORE/tools/ywdplugin-build.py" "$STAGE" "$OUT" \
   --publisher "$PUBLISHER" --sign-key "$PRIVATE_KEY" --key-id "$KEY_ID"
 
 if [[ -f "$PUBLIC_KEY" ]]; then
-  "$ROOT/PLUGIN-DEV.sh" verify "$OUT"
+  bash "$ROOT/PLUGIN-DEV.sh" verify "$OUT"
 fi
-"$ROOT/PLUGIN-DEV.sh" inspect "$OUT"
+bash "$ROOT/PLUGIN-DEV.sh" inspect "$OUT"
 
 echo
 echo "[OK] RX Monitor Phase 3F candidate ready"
