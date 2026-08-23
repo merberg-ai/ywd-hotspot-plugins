@@ -1,81 +1,82 @@
 # DMR RX Monitor
 
-This directory is the **canonical pre-audio RX Monitor source boundary** used by YWD-Hotspot plugin development.
+DMR RX Monitor is a sandboxed YWD-Hotspot UI plugin for passive DMR frame diagnostics, bounded capture/export, and optional streamed RX audio.
 
-Current manifest version remains `0.3.0` intentionally. It contains the physically proven browser-side DMR deinterleave/FEC/descrambling/49-bit AMBE+2 recovery and bounded capture layer, but it does not contain the locally generated mbelib browser decoder or the live-audio scheduler.
+## Current `dev-plugins` audio candidate
 
-## Why this source is still v0.3
+The selected Phase 3J candidate is `0.4.0-alpha19`.
 
-Live RX audio has since been physically proven through the Phase3E development builder, including network AUTO operation and RF-side audio. However, the working `0.4.0-alpha7` candidate is currently assembled locally by:
-
-```text
-tools/phase3e/BUILD-LIVE-CANDIDATE.sh
-```
-
-That builder combines:
+Its live-audio architecture is deliberately split across trust boundaries:
 
 ```text
-plugins/dmr-rx-monitor        proven v0.3 base
-+ locally built browser decoder
-+ live-audio scheduler
-+ operator-view polish
-→ signed local 0.4.0-alpha7 .ywdplugin
+MMDVM voice telemetry
+        |
+        v
+trusted YWD-Hotspot core
+  - direct local AF_UNIX datagram live path
+  - DMR AMBE/FEC recovery
+  - 10-frame / 200 ms batching
+  - external YWD Vocoder Protocol v1 decode
+        |
+        v
+one persistent NDJSON PCM stream
+        |
+        v
+sandboxed RX Monitor iframe
+  - Web Audio reservoir/playout only
 ```
 
-The split is deliberate. The project still needs an explicit decision about mbelib/Wasm source/binary distribution before the live-audio candidate becomes canonical public plugin source. Generated decoder artifacts must not be committed merely to collapse the development layout.
+The plugin contains no AMBE software vocoder, mbelib binary/source, or Wasm decoder.
+
+### Selected playout settings
+
+- 400 ms target browser reservoir
+- 700 ms emergency scheduled-depth ceiling
+- gentle +/-1% adaptive playback correction
+- normal decoder-state resets do not discard already-buffered PCM
+- explicit stream drop/error events rebuffer
+- 48 kHz browser audio output
+
+The matching tested core policy uses a 12-burst bounded live tail, 400 ms decoder timeout, and external decoder scheduling policy `Nice=0` / `CPUWeight=200`.
+
+## Source layout
+
+The canonical `plugins/dmr-rx-monitor/` directory remains the stable diagnostic/capture source boundary. The Phase 3J streamed-audio layer is assembled reproducibly from `tools/phase3j/` so the external-decoder distribution boundary stays explicit and no generated decoder material is committed into the plugin.
+
+Build the current signed candidate with:
+
+```bash
+bash tools/phase3j/BUILD-STREAMED-LIVE-CANDIDATE.sh
+```
+
+Output:
+
+```text
+dist/dmr-rx-monitor-0.4.0-alpha19.ywdplugin
+```
+
+See `tools/phase3j/README.md` for the retained Phase 3J components and final tuning baseline.
 
 ## Security boundary
 
-The plugin itself has no modem ownership:
+The plugin has no modem or transmitter ownership:
 
-- no direct serial/MMDVM device access;
+- no direct serial/MMDVM access;
 - no direct MQTT access;
+- no direct AF_UNIX socket access;
 - no generic network access from the sandboxed iframe;
-- no RF ownership or transmit authority;
-- frame reads are capability-gated by trusted YWD-Hotspot core;
-- browser capture history is bounded/local to the plugin page.
+- no RF transmit authority;
+- frame/stream access remains capability-gated by trusted YWD-Hotspot core;
+- capture history is bounded and local to the plugin page.
 
-Current capabilities:
+Current capabilities used by the streamed candidate are:
 
 ```text
 ui:section
 read:dmr-voice
+use:vocoder
 ```
 
-## Proven v0.3 recovery layer
+## Diagnostic recovery layer
 
-For each accepted DMR voice burst, browser code:
-
-1. deinterleaves the three AMBE channel codewords;
-2. corrects protected Golay words;
-3. descrambles C1 using corrected C0 data;
-4. combines protected/unprotected bits into three 49-bit AMBE+2 2450 frames;
-5. tracks corrected/unrecoverable frames and DMR sequence gaps;
-6. maintains a bounded capture ring for JSON export.
-
-A continuous clean stream should recover about 50 AMBE frames/sec. 500 recovered frames represent approximately 10 seconds of nominal voice.
-
-## Live-audio development status
-
-Phase3E has additionally proven, without changing the trusted RF ownership model:
-
-- local mbelib-based browser AMBE→PCM decode;
-- 100 ms PCM chunk scheduling;
-- adaptive/maintained jitter reservoir;
-- browser audio clock correction;
-- manual TS1/TS2 playback;
-- AUTO call/timeslot locking and handoff;
-- busy Worldwide network monitoring;
-- RF-side live browser audio.
-
-Those live-audio layers remain in `tools/phase3e/` until the distribution decision is closed.
-
-## Development rule
-
-Do not casually copy the staged Phase3E `ui.js` or generated decoder into this directory and call it a release. Canonicalization should be one deliberate step that:
-
-- resolves the mbelib/Wasm distribution/licensing boundary;
-- produces reproducible source/build instructions;
-- updates `plugin.json`/README to the promoted version;
-- preserves the proven audio engine behavior;
-- produces a normal signed package through the canonical YWD package builder.
+For accepted DMR voice bursts, the diagnostic layer can recover the three AMBE+2 2450 frames, track corrected/unrecoverable data and sequence gaps, and maintain a bounded capture ring for export. Live speech synthesis itself is performed only through the separately installed external vocoder backend managed by trusted core.
