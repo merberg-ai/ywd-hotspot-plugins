@@ -9,7 +9,7 @@ PHASE3F="$ROOT/tools/phase3f"
 STAGE_ROOT="$HERE/stage"
 STAGE="$STAGE_ROOT/dmr-rx-monitor"
 DIST="$ROOT/dist"
-VERSION="0.4.0-alpha11"
+VERSION="0.4.0-alpha12"
 CONFIG_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/ywd-hotspot-plugins/build.json"
 DEFAULT_CORE="$(cd "$ROOT/.." && pwd)/ywd-hotspot"
 MAX_UI_JS=$((256 * 1024))
@@ -20,6 +20,7 @@ need() { command -v "$1" >/dev/null 2>&1 || fail "Required command not found: $1
 for cmd in python3 openssl; do need "$cmd"; done
 [[ -d "$PLUGIN_SRC" ]] || fail "RX Monitor source not found: $PLUGIN_SRC"
 [[ -s "$HERE/external-live-audio.js" ]] || fail "Missing external-live-audio.js"
+[[ -s "$HERE/stabilize-alpha12.js" ]] || fail "Missing stabilize-alpha12.js"
 [[ -s "$PHASE3E/live-audio-polish.js" ]] || fail "Missing proven Phase 3E audio polish"
 [[ -s "$PHASE3E/live-audio.css" ]] || fail "Missing proven Phase 3E audio CSS"
 [[ -s "$PHASE3F/vocoder-diagnostics.js" ]] || fail "Missing proven Phase 3F vocoder diagnostics"
@@ -66,7 +67,7 @@ if required_dep not in deps:
     raise SystemExit(f'canonical RX manifest is missing dependency: {required_dep}')
 
 manifest['version']=version
-manifest['description']='Passive DMR RX Monitor with browser AMBE49 recovery, external YWD Vocoder Protocol v1 live decode, bounded 5-frame/100 ms batching, AUTO call/timeslot selection, and maintained browser PCM playout. The plugin contains no AMBE software vocoder and has no direct RF, serial, MQTT, or network access.'
+manifest['description']='Passive DMR RX Monitor with browser AMBE49 recovery, external YWD Vocoder Protocol v1 live decode, bounded 5-frame/100 ms batching, AUTO call/timeslot selection, backend keepalive while audio is active, and stabilized browser PCM playout. The plugin contains no AMBE software vocoder and has no direct RF, serial, MQTT, or network access.'
 manifest_path.write_text(json.dumps(manifest, indent=2) + '\n')
 
 ui_path=stage/'ui.js'
@@ -95,6 +96,7 @@ PY
 
 cat \
   "$HERE/external-live-audio.js" \
+  "$HERE/stabilize-alpha12.js" \
   "$PHASE3E/live-audio-polish.js" \
   "$PHASE3F/vocoder-diagnostics.js" \
   "$STAGE/ui.js" > "$STAGE/ui.combined.js"
@@ -137,7 +139,7 @@ PY
 [[ -n "$KEY_ID" && -f "$PRIVATE_KEY" ]] || fail "UI plugins require signing. Configure the normal PLUGIN-DEV.sh signing key first."
 OUT="$DIST/dmr-rx-monitor-$VERSION.ywdplugin"
 
-echo "[Phase3G] Building signed external-vocoder live-audio candidate..."
+echo "[Phase3G] Building signed stabilized external-vocoder live-audio candidate..."
 python3 "$CORE/tools/ywdplugin-build.py" "$STAGE" "$OUT" \
   --publisher "$PUBLISHER" --sign-key "$PRIVATE_KEY" --key-id "$KEY_ID"
 
@@ -153,5 +155,5 @@ echo "     output : $OUT"
 echo "     core   : $CORE"
 echo "     decoder: NONE (external YWD Vocoder Protocol v1 backend only)"
 echo
-echo "Test goal: real recovered AMBE49 traffic -> external fake backend -> 440 Hz PCM -> browser audio."
-echo "Live decode batches are 5 frames / 100 ms; pending audio is capped at 300 ms and dropped on overload."
+echo "Alpha12 stabilization: sequence-gap remote resets suppressed; backend keepalive is active only while audio runs; decode/reset RTT is visible."
+echo "Test goal: sustained real recovered AMBE49 traffic -> external fake backend -> continuous 440 Hz PCM -> browser audio."
