@@ -47,14 +47,19 @@
     return `${Math.max(0, performance.now() - started).toFixed(0)} ms`;
   }
 
-  function renderStatus(result, elapsed) {
+  function applyBackendIdentity(result) {
     const available = result?.available === true;
-    setState(available ? 'READY' : 'UNAVAILABLE', available ? 'good' : 'warn');
     setText('vocoderDiagBackend', available ? (result.backend || 'available') : 'unavailable');
     setText('vocoderDiagProtocol', result?.protocol ?? '—');
     setText('vocoderDiagMode', available ? `${result.fake ? 'FAKE · ' : ''}${result.mode || 'backend'}` : '—');
     setText('vocoderDiagBatch', available ? `${result.preferred_batch_frames || '—'} preferred / ${result.max_batch_frames || '—'} max` : '—');
     setText('vocoderDiagAudio', available ? `${result.sample_rate || '—'} Hz · ${result.samples_per_frame || '—'} spf · ${result.sample_format || '—'}` : '—');
+  }
+
+  function renderStatus(result, elapsed) {
+    const available = result?.available === true;
+    setState(available ? 'READY' : 'UNAVAILABLE', available ? 'good' : 'warn');
+    applyBackendIdentity(result);
     setText('vocoderDiagLatency', elapsed);
     setText('vocoderDiagTest', '—');
     setText('vocoderDiagPcm', '—');
@@ -126,24 +131,39 @@
     if (busy) return;
     const started = performance.now();
     setBusy(true);
-    setState('DECODING', 'active');
-    setNote(`Sending ${TEST_FRAMES} fixed zero AMBE49 frames. This tests the bridge and PCM return shape; it is not a speech-quality test.`);
+    setState('WARMING', 'active');
+    setNote('Warming the socket-activated backend with STATUS before the 300 ms live-DECODE test.');
     setDetails(null);
     try {
-      if (!window.ywdPlugin?.vocoderDecode) throw new Error('YWD vocoder bridge API is unavailable');
+      if (!window.ywdPlugin?.vocoderStatus || !window.ywdPlugin?.vocoderDecode) {
+        throw new Error('YWD vocoder bridge API is unavailable');
+      }
+
+      const warm = await window.ywdPlugin.vocoderStatus();
+      applyBackendIdentity(warm);
+      if (warm?.available !== true) {
+        throw new Error(String(warm?.error || 'No compatible vocoder backend is available'));
+      }
+
+      const decodeStarted = performance.now();
+      setState('DECODING', 'active');
+      setNote(`Backend warm. Sending ${TEST_FRAMES} fixed zero AMBE49 frames under the normal 300 ms DECODE budget.`);
       const result = await window.ywdPlugin.vocoderDecode(Array.from({length:TEST_FRAMES}, () => ZERO_AMBE49));
       const pass = decodePass(result);
+      const decodeElapsed = elapsedText(decodeStarted);
+      const totalElapsed = elapsedText(started);
+
       setState(pass ? 'TEST PASS' : 'TEST FAIL', pass ? 'good' : 'error');
-      setText('vocoderDiagBackend', result?.codec || '—');
-      setText('vocoderDiagProtocol', result?.protocol ?? '—');
+      setText('vocoderDiagBackend', result?.codec || warm.backend || '—');
+      setText('vocoderDiagProtocol', result?.protocol ?? warm.protocol ?? '—');
       setText('vocoderDiagAudio', `${result?.sample_rate || '—'} Hz · ${result?.samples_per_frame || '—'} spf · ${result?.sample_format || '—'}`);
-      setText('vocoderDiagLatency', elapsedText(started));
+      setText('vocoderDiagLatency', `${decodeElapsed} decode · ${totalElapsed} total`);
       setText('vocoderDiagTest', `${result?.frame_count ?? '—'} frames`);
       setText('vocoderDiagPcm', `${result?.pcm_bytes ?? '—'} bytes${result?.pcm_sha256 ? ` · ${String(result.pcm_sha256).slice(0, 12)}…` : ''}`);
       setNote(pass
-        ? 'PASS: sandboxed RX Monitor received the expected 5-frame / 100 ms PCM result through YWD Vocoder Protocol v1.'
+        ? 'PASS: backend warm-up completed, then sandboxed RX Monitor received the expected 5-frame / 100 ms PCM result inside the normal live-DECODE budget.'
         : 'FAIL: the backend answered, but the PCM response shape did not match the protocol contract.');
-      setDetails(result);
+      setDetails({warmup:warm, decode:result});
     } catch (error) {
       setState('ERROR', 'error');
       setText('vocoderDiagLatency', elapsedText(started));
