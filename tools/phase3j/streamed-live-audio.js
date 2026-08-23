@@ -4,8 +4,8 @@
   const SAMPLES_PER_FRAME = 160;
   const CHUNK_FRAMES = 10;
   const CHUNK_MS = 200;
-  const DEFAULT_BUFFER_MS = 240;
-  const MAX_SCHEDULED_DEPTH_MS = 300;
+  const DEFAULT_BUFFER_MS = 320;
+  const MAX_SCHEDULED_DEPTH_MS = 700;
   const MIN_START_LEAD_MS = 40;
   const RESERVOIR_DEADBAND_MS = 20;
   const RESERVOIR_GAIN_MS = 3500;
@@ -349,7 +349,7 @@
       <div class="rx-audio-controls">
         <label>Source<select id="rxAudioSource"><option value="network" selected>NETWORK</option><option value="rf">RF</option><option value="all">ALL</option></select></label>
         <label>Slot<select id="rxAudioSlot"><option value="auto" selected>AUTO</option><option value="1">TS1</option><option value="2">TS2</option></select></label>
-        <label>Jitter buffer<select id="rxAudioTarget"><option value="160">160 ms</option><option value="200">200 ms</option><option value="240" selected>240 ms</option></select></label>
+        <label>Jitter buffer<select id="rxAudioTarget"><option value="200">200 ms</option><option value="240">240 ms</option><option value="320" selected>320 ms</option><option value="400">400 ms</option></select></label>
         <label class="rx-audio-volume">Volume<input id="rxAudioVolume" type="range" min="0" max="100" value="70"><span id="rxAudioVolumeValue">70%</span></label>
         <label class="rx-audio-mute">Mute<input id="rxAudioMute" type="checkbox"></label>
       </div>
