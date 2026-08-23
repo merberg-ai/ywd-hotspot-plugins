@@ -101,11 +101,14 @@ cat \
 mv "$STAGE/ui.combined.js" "$STAGE/ui.js"
 cat "$PHASE3E/live-audio.css" "$PHASE3F/vocoder-diagnostics.css" >> "$STAGE/ui.css"
 
+# Reject actual bundled decoder artifacts and executable embedded-decoder hooks.
+# The canonical FEC/recovery source intentionally contains a provenance comment
+# mentioning mbelib's Golay path; that text alone is not decoder code/material.
 if find "$STAGE" -type f \( -iname '*mbelib*' -o -name '*.wasm' \) -print -quit | grep -q .; then
   fail "Phase 3G must not contain mbelib or Wasm decoder files"
 fi
-if grep -Eiq 'createYwdMbeModule|_ywd_mbe_|ywd-mbelib|mbelib' "$STAGE/ui.js"; then
-  fail "Phase 3G ui.js unexpectedly contains embedded-decoder symbols"
+if grep -Eiq 'createYwdMbeModule|_ywd_mbe_|ywd-mbelib' "$STAGE/ui.js"; then
+  fail "Phase 3G ui.js unexpectedly contains embedded-decoder executable symbols"
 fi
 
 echo "[OK] No embedded AMBE decoder material"
