@@ -88,23 +88,26 @@ The DMR RX Monitor development path has physically proven:
 - offline AMBE→PCM proof;
 - browser decoder proof;
 - live network audio including busy AUTO operation;
-- live RF-side browser audio.
+- live RF-side browser audio;
+- external YWD Vocoder Protocol v1 STATUS/RESET/DECODE from the sandboxed RX Monitor through the trusted dashboard boundary, with no decoder shipped in the plugin.
 
-The **public canonical source directory is intentionally not yet promoted to the live-audio package**. `plugins/dmr-rx-monitor` remains the pre-audio v0.3 source boundary, while `tools/phase3e/BUILD-LIVE-CANDIDATE.sh` stages the locally signed `0.4.0-alpha7` development candidate by combining that proven base with the local browser decoder/live-audio layers.
+The **public canonical source directory is intentionally not yet promoted to the live-audio package**. `plugins/dmr-rx-monitor` remains the compact canonical recovery/diagnostic source, while development candidates are staged by the phase tools.
 
-That split is deliberate until the project makes the separate mbelib/Wasm source/binary distribution decision. Do not commit generated decoder output merely to make the repository look more finished.
+`tools/phase3g/BUILD-LIVE-EXTERNAL-CANDIDATE.sh` is the current no-decoder live-audio candidate path. It keeps the proven browser playout/call-selection behavior while replacing the old embedded decoder boundary with 5-frame/100 ms requests to a separately installed YWD Vocoder Protocol v1 backend. Pending audio is bounded and dropped rather than allowed to backpressure RF.
+
+Generated decoder output remains ignored and is not part of Phase 3G.
 
 ## RX development tooling
 
 ```text
 tools/phase3c   offline capture → WAV proof
-tools/phase3d   local browser decoder build/playback proof
-tools/phase3e   live-audio candidate assembly/polish
+tools/phase3d   historical local browser decoder build/playback proof
+tools/phase3e   historical embedded-decoder live-audio proof/polish
+tools/phase3f   proven external-vocoder browser/core/socket diagnostic boundary
+tools/phase3g   external-vocoder live-audio integration (no decoder shipped)
 ```
 
-These directories are development history/tooling, not three separate user-facing plugins. Once RX Monitor has a canonical distributable source form, the historical proof tooling can be archived/consolidated.
-
-Generated decoder output and candidate staging remain ignored.
+These directories are development history/tooling, not separate user-facing plugins. Once RX Monitor has a canonical distributable source form, the historical proof tooling can be archived/consolidated.
 
 ## Signing keys
 
