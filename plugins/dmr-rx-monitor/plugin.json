@@ -2,18 +2,21 @@
   "api": 1,
   "id": "dmr-rx-monitor",
   "name": "DMR RX Monitor",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Passive DMR receive monitor with trusted frame-path diagnostics, browser-side AMBE+2 FEC/de-scrambling, 49-bit vocoder-frame recovery, continuity statistics, and bounded capture export. No direct RF, serial, MQTT, or network access.",
   "trust": "experimental",
   "kind": "ui",
   "provider": "browser-ui",
   "capabilities": [
     "ui:section",
-    "read:dmr-voice"
+    "read:dmr-voice",
+    "use:vocoder"
   ],
   "rf_mode": false,
   "config_schema": "config.schema.json",
-  "dependencies": [],
+  "dependencies": [
+    "mmdvm-cap-demand-gated-dmr-voice"
+  ],
   "hardware": [],
   "ui": {
     "api": 1,
