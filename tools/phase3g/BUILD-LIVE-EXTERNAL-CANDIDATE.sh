@@ -8,9 +8,9 @@ PHASE3E="$ROOT/tools/phase3e"
 PHASE3F="$ROOT/tools/phase3f"
 STAGE_ROOT="$HERE/stage"
 STAGE="$STAGE_ROOT/dmr-rx-monitor"
-AUDIO_JS="$STAGE_ROOT/external-live-audio-alpha13.js"
+AUDIO_JS="$STAGE_ROOT/external-live-audio-alpha14.js"
 DIST="$ROOT/dist"
-VERSION="0.4.0-alpha13"
+VERSION="0.4.0-alpha14"
 CONFIG_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/ywd-hotspot-plugins/build.json"
 DEFAULT_CORE="$(cd "$ROOT/.." && pwd)/ywd-hotspot"
 MAX_UI_JS=$((256 * 1024))
@@ -68,12 +68,11 @@ if required_dep not in deps:
     raise SystemExit(f'canonical RX manifest is missing dependency: {required_dep}')
 
 manifest['version']=version
-manifest['description']='Passive DMR RX Monitor with browser AMBE49 recovery, external YWD Vocoder Protocol v1 live decode, bounded 5-frame/100 ms batching, AUTO call/timeslot selection, backend keepalive while audio is active, and stabilized browser PCM playout. The plugin contains no AMBE software vocoder and has no direct RF, serial, MQTT, or network access.'
+manifest['description']='Passive DMR RX Monitor with browser AMBE49 recovery, external YWD Vocoder Protocol v1 live decode, sustained-RX 10-frame/200 ms batching, AUTO call/timeslot selection, backend keepalive while audio is active, and bounded browser PCM playout. The plugin contains no AMBE software vocoder and has no direct RF, serial, MQTT, or network access.'
 manifest_path.write_text(json.dumps(manifest, indent=2) + '\n')
 
 ui_path=stage/'ui.js'
 ui=ui_path.read_text()
-
 needle='        pushCapture(frame, recovered, index);'
 if ui.count(needle) != 1:
     raise SystemExit('RX Monitor ui.js hook point changed; expected exactly one pushCapture call')
@@ -95,24 +94,36 @@ ui=ui.replace('Browser-side FEC, de-scrambling, continuity diagnostics, and boun
 ui_path.write_text(ui)
 PY
 
-# Keep the physically observed Alpha11 engine source intact. Stage Alpha13's
-# latency ceiling as a deterministic build-time patch so the Alpha11 partial
-# proof remains exactly reproducible from its checkpoint.
+# Keep the physically observed Alpha11 engine source immutable. Alpha14 is a
+# deterministic staged patch: Alpha13 stabilization plus lower request-rate
+# sustained-RX batching sized to Protocol v1's existing 10-frame maximum.
 python3 - "$HERE/external-live-audio.js" "$AUDIO_JS" <<'PY'
 import pathlib, sys
 src=pathlib.Path(sys.argv[1]).read_text()
 out=pathlib.Path(sys.argv[2])
-const_needle='  const HARD_REANCHOR_EXTRA_MS = 400;\n  const MAX_PENDING_FRAMES = 15;'
-const_repl='  const HARD_REANCHOR_EXTRA_MS = 400;\n  const MAX_SCHEDULED_DEPTH_MS = 300;\n  const MAX_PENDING_FRAMES = 15;'
-if src.count(const_needle) != 1:
-    raise SystemExit('Alpha13 audio constant patch point changed')
-src=src.replace(const_needle, const_repl)
-queue_needle="""    if (!primed) {
+
+def once(old, new, label):
+    global src
+    count=src.count(old)
+    if count != 1:
+        raise SystemExit(f'Alpha14 {label} patch point changed (found {count})')
+    src=src.replace(old, new)
+
+once('  const CHUNK_FRAMES = 5;', '  const CHUNK_FRAMES = 10;', 'chunk-size')
+once('  const AUDIO_POLL_MS = 100;', '  const AUDIO_POLL_MS = 200;', 'audio-poll')
+once('  const DEFAULT_BUFFER_MS = 160;', '  const DEFAULT_BUFFER_MS = 240;', 'default-buffer')
+once(
+    '  const HARD_REANCHOR_EXTRA_MS = 400;\n  const MAX_PENDING_FRAMES = 15;',
+    '  const HARD_REANCHOR_EXTRA_MS = 400;\n  const MAX_SCHEDULED_DEPTH_MS = 300;\n  const MAX_PENDING_FRAMES = 15;',
+    'latency-ceiling-constant',
+)
+once(
+    """    if (!primed) {
       primeAndScheduleChunk(chunk, nominalMs);
       return;
     }
-    if (nextAudioTime < audioCtx.currentTime + 0.005) {"""
-queue_repl="""    if (!primed) {
+    if (nextAudioTime < audioCtx.currentTime + 0.005) {""",
+    """    if (!primed) {
       primeAndScheduleChunk(chunk, nominalMs);
       return;
     }
@@ -126,10 +137,25 @@ queue_repl="""    if (!primed) {
       primeAndScheduleChunk(chunk, nominalMs);
       return;
     }
-    if (nextAudioTime < audioCtx.currentTime + 0.005) {"""
-if src.count(queue_needle) != 1:
-    raise SystemExit('Alpha13 playout ceiling patch point changed')
-src=src.replace(queue_needle, queue_repl)
+    if (nextAudioTime < audioCtx.currentTime + 0.005) {""",
+    'playout-ceiling',
+)
+once(
+    'Recovered AMBE49 is sent in 5-frame / 100 ms batches to a separately installed YWD Vocoder Protocol v1 backend.',
+    'Recovered AMBE49 is sent in 10-frame / 200 ms batches to a separately installed YWD Vocoder Protocol v1 backend.',
+    'panel-batch-copy',
+)
+once(
+    'Waiting for 5 recovered AMBE49 frames.',
+    'Waiting for 10 recovered AMBE49 frames.',
+    'startup-copy',
+)
+once(
+    '<option value="160" selected>160 ms</option><option value="200">200 ms</option><option value="240">240 ms</option>',
+    '<option value="160">160 ms</option><option value="200">200 ms</option><option value="240" selected>240 ms</option>',
+    'buffer-select',
+)
+once('100 ms / 5f', '200 ms / 10f', 'initial-chunk-copy')
 out.write_text(src)
 PY
 
@@ -142,9 +168,6 @@ cat \
 mv "$STAGE/ui.combined.js" "$STAGE/ui.js"
 cat "$PHASE3E/live-audio.css" "$PHASE3F/vocoder-diagnostics.css" >> "$STAGE/ui.css"
 
-# Reject actual bundled decoder artifacts and executable embedded-decoder hooks.
-# The canonical FEC/recovery source intentionally contains a provenance comment
-# mentioning mbelib's Golay path; that text alone is not decoder code/material.
 if find "$STAGE" -type f \( -iname '*mbelib*' -o -name '*.wasm' \) -print -quit | grep -q .; then
   fail "Phase 3G must not contain mbelib or Wasm decoder files"
 fi
@@ -178,7 +201,7 @@ PY
 [[ -n "$KEY_ID" && -f "$PRIVATE_KEY" ]] || fail "UI plugins require signing. Configure the normal PLUGIN-DEV.sh signing key first."
 OUT="$DIST/dmr-rx-monitor-$VERSION.ywdplugin"
 
-echo "[Phase3G] Building signed stabilized external-vocoder live-audio candidate..."
+echo "[Phase3G] Building signed sustained-RX external-vocoder candidate..."
 python3 "$CORE/tools/ywdplugin-build.py" "$STAGE" "$OUT" \
   --publisher "$PUBLISHER" --sign-key "$PRIVATE_KEY" --key-id "$KEY_ID"
 
@@ -194,7 +217,7 @@ echo "     output : $OUT"
 echo "     core   : $CORE"
 echo "     decoder: NONE (external YWD Vocoder Protocol v1 backend only)"
 echo
-echo "Alpha13 stabilization: sequence-gap remote resets suppressed; backend keepalive is active only while audio runs; decode/reset RTT is visible."
-echo "Alpha13 browser fix: removed Alpha12's self-triggering DOM MutationObserver loop."
-echo "Alpha13 playout: browser scheduled depth is hard-capped at 300 ms; stale scheduled audio is reanchored instead of accumulating latency."
-echo "Test goal: sustained real recovered AMBE49 traffic -> external fake backend -> continuous 440 Hz PCM -> browser audio."
+echo "Alpha14 sustained RX: 10-frame/200 ms vocoder batches + 200 ms active RX polling."
+echo "Alpha14 playout: default 240 ms target; scheduled depth remains hard-capped at 300 ms."
+echo "Alpha14 preserves Alpha13 sequence-gap reset suppression, keepalive, RTT diagnostics, and no-decoder boundary."
+echo "Test goal: long continuous DMR RX must sustain fake-tone PCM without cumulative underrun collapse."
