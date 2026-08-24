@@ -9,7 +9,7 @@ Current build/development instructions live directly under `docs/`. This directo
 - **[RX Monitor Development History](RX-MONITOR-DEVELOPMENT.md)** — Phase 3C through the selected Phase 3J/Alpha19 architecture.
 - **[Phase 3H Alpha15 observation](phase3h-alpha15-observation.md)** — retained physical observation from the persistent-vocoder transition.
 
-The old `tools/phase3c` … `tools/phase3j` directories were removed from the active `dev` tree during repository cleanup. Their exact source remains recoverable from Git history and checkpoint refs.
+The old `tools/phase3c` … `tools/phase3j` directories were removed from the active `dev` tree during repository cleanup. Their exact source remains recoverable from Git history.
 
 A convenient pre-cleanup source snapshot is:
 
@@ -17,8 +17,26 @@ A convenient pre-cleanup source snapshot is:
 b3c3e741f83e9f1204a9eb36027f84e71f0ce7e3
 ```
 
-The final selected package checkpoint remains:
+## Retained checkpoint refs
+
+Checkpoint branches are kept only when they still provide durable rollback or architectural audit value. Intermediate `needs-testing`, failed, superseded and one-off observation labels are intentionally pruned once later evidence makes them redundant.
+
+The retained RX/vocoder checkpoints are:
+
+```text
+checkpoint-dev-plugins-pre-vocoder-boundary
+checkpoint-dev-plugins-phase3f-alpha10-vocoder-boundary-proven
+checkpoint-dev-plugins-phase3h-alpha15-pre-real-vocoder
+checkpoint-dev-plugins-phase3i-alpha15-mbelib-protocol-sanity-proven
+checkpoint-dev-plugins-phase3i-alpha15-real-speech-partial-proven
+checkpoint-dev-plugins-phase3j-pre-stream-plugin
+checkpoint-dev-plugins-phase3j-alpha19-proven
+```
+
+The final selected package checkpoint is:
 
 ```text
 checkpoint-dev-plugins-phase3j-alpha19-proven
 ```
+
+`dev` is the integrated development line. `dev-plugins` starts from the same clean baseline and may diverge again only for intentionally isolated plugin/framework experiments. `main` remains the public/release-associated line.
