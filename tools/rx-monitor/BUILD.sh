@@ -4,7 +4,6 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/../.." && pwd)"
 PLUGIN_SRC="$ROOT/plugins/dmr-rx-monitor"
-PHASE3E="$ROOT/tools/phase3e"
 STAGE_ROOT="$HERE/stage"
 STAGE="$STAGE_ROOT/dmr-rx-monitor"
 DIST="$ROOT/dist"
@@ -21,7 +20,7 @@ for cmd in python3 openssl; do need "$cmd"; done
 [[ -s "$HERE/streamed-live-audio.js" ]] || fail "Missing streamed-live-audio.js"
 [[ -s "$HERE/stream-polish.js" ]] || fail "Missing stream-polish.js"
 [[ -s "$HERE/alpha19-playout-patch.py" ]] || fail "Missing alpha19-playout-patch.py"
-[[ -s "$PHASE3E/live-audio.css" ]] || fail "Missing live-audio.css"
+[[ -s "$HERE/live-audio.css" ]] || fail "Missing live-audio.css"
 
 mapfile -t cfg < <(python3 - "$CONFIG_FILE" "$DEFAULT_CORE" <<'PY'
 import json, pathlib, sys
@@ -74,19 +73,19 @@ PY
 
 cat "$HERE/streamed-live-audio.js" "$HERE/stream-polish.js" >> "$STAGE/ui.js"
 python3 "$HERE/alpha19-playout-patch.py" "$STAGE/ui.js"
-cat "$PHASE3E/live-audio.css" >> "$STAGE/ui.css"
+cat "$HERE/live-audio.css" >> "$STAGE/ui.css"
 
 if find "$STAGE" -type f \( -iname '*mbelib*' -o -name '*.wasm' \) -print -quit | grep -q .; then
-  fail "Phase 3J plugin must not contain mbelib or Wasm decoder files"
+  fail "RX Monitor plugin must not contain mbelib or Wasm decoder files"
 fi
 if grep -Eiq 'createYwdMbeModule|_ywd_mbe_' "$STAGE/ui.js"; then
-  fail "Phase 3J ui.js contains embedded-decoder executable symbols"
+  fail "RX Monitor ui.js contains embedded-decoder executable symbols"
 fi
 if grep -Eq 'vocoderDecode|vocoderReset|ywdRxAudioFrame' "$STAGE/ui.js"; then
-  fail "Phase 3J ui.js unexpectedly contains the legacy browser decode path"
+  fail "RX Monitor ui.js unexpectedly contains the legacy browser decode path"
 fi
 if ! grep -q 'startRxAudioStream' "$STAGE/ui.js"; then
-  fail "Phase 3J streamed audio API hook is missing"
+  fail "RX Monitor streamed audio API hook is missing"
 fi
 if ! grep -q 'DEFAULT_BUFFER_MS = 400' "$STAGE/ui.js"; then
   fail "Alpha19 400 ms browser reservoir default is missing"
@@ -116,7 +115,7 @@ echo "[OK] Alpha19 browser reservoir: 400 ms default / 700 ms ceiling"
 echo "[OK] Alpha19 playback correction: +/-1% with 40 ms deadband"
 echo "[OK] Alpha19 preserves buffered PCM across decoder-state resets"
 UI_BYTES="$(wc -c < "$STAGE/ui.js")"
-echo "[Phase3J] Combined ui.js : $UI_BYTES bytes"
+echo "[RX] Combined ui.js : $UI_BYTES bytes"
 if (( UI_BYTES > MAX_UI_JS )); then
   fail "Combined ui.js exceeds Plugin UI v1's 256 KiB limit ($UI_BYTES > $MAX_UI_JS)"
 fi
@@ -140,7 +139,7 @@ PY
 [[ -n "$KEY_ID" && -f "$PRIVATE_KEY" ]] || fail "UI plugins require signing. Configure the normal PLUGIN-DEV.sh signing key first."
 OUT="$DIST/dmr-rx-monitor-$VERSION.ywdplugin"
 
-echo "[Phase3J] Building signed streamed-audio candidate..."
+echo "[RX] Building signed streamed-audio candidate..."
 python3 "$CORE/tools/ywdplugin-build.py" "$STAGE" "$OUT" \
   --publisher "$PUBLISHER" --sign-key "$PRIVATE_KEY" --key-id "$KEY_ID"
 
@@ -150,7 +149,7 @@ fi
 bash "$ROOT/PLUGIN-DEV.sh" inspect "$OUT"
 
 echo
-echo "[OK] RX Monitor Phase 3J candidate ready"
+echo "[OK] RX Monitor candidate ready"
 echo "     plugin    : dmr-rx-monitor v$VERSION"
 echo "     output    : $OUT"
 echo "     core      : $CORE"

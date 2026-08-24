@@ -4,12 +4,12 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONFIG_ROOT="${XDG_CONFIG_HOME:-$HOME/.config}/ywd-hotspot-plugins"
 CONFIG_FILE="$CONFIG_ROOT/build.json"
-BUILDER="$ROOT/tools/phase3j/BUILD-STREAMED-LIVE-CANDIDATE.sh"
+BUILDER="$ROOT/tools/rx-monitor/BUILD.sh"
 EXPECTED_OUT="$ROOT/dist/dmr-rx-monitor-0.4.0-alpha19.ywdplugin"
 
 fail(){ printf '[FAIL] %s\n' "$*" >&2; exit 1; }
 
-[[ -x "$BUILDER" || -f "$BUILDER" ]] || fail "Phase 3J RX Monitor builder not found: $BUILDER"
+[[ -x "$BUILDER" || -f "$BUILDER" ]] || fail "RX Monitor builder not found: $BUILDER"
 command -v python3 >/dev/null 2>&1 || fail "python3 is required"
 command -v openssl >/dev/null 2>&1 || fail "openssl is required"
 
@@ -41,7 +41,7 @@ fi
 Expected by default:
   $CORE
 
-Clone the core repository beside this one on dev-plugins, or run:
+Clone the core repository beside this one on dev, or run:
   ./PLUGIN-DEV.sh
 and set the core checkout path.
 EOF
