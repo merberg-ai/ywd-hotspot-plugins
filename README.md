@@ -1,137 +1,202 @@
 # YWD-Hotspot Plugins
 
-Open-source companion workspace for **YWD-Hotspot** plugin development.
+Companion repository for **YWD-Hotspot** plugins, examples, build helpers, and plugin-development tooling.
 
-Core repository:
+Core repository: [`merberg-ai/ywd-hotspot`](https://github.com/merberg-ai/ywd-hotspot)
 
-```text
-merberg-ai/ywd-hotspot
-```
+YWD-Hotspot core remains authoritative for the plugin API, `.ywdplugin` package format, manifest validation, signature verification, lifecycle/update transactions, service sandboxing, browser isolation, capability checks, and RF ownership rules.
 
-YWD-Hotspot core remains authoritative for the plugin API, `.ywdplugin` format, signature verification, lifecycle/update transactions, service sandbox, Plugin UI isolation, updater integration, and RF ownership rules.
+> [!IMPORTANT]
+> The current DMR RX Monitor development package targets **YWD-Hotspot `dev-plugins`** and is still pre-release software. Keep the core and plugin repositories on matching `dev-plugins` checkouts when building it.
 
-## Current compatibility target
+## Quick start: build DMR RX Monitor
 
-Plugin development tracks the plugin-capable YWD-Hotspot integration runtime. Core `dev` is the physically accepted baseline; `dev-plugins` may move ahead with next-development integration work.
-
-The plugin repository itself keeps plugin source/examples separate from trusted core implementation.
-
-## Layout
-
-```text
-plugins/       user-facing/candidate plugin source
-examples/      harmless framework validation packages
-docs/          plugin-development notes
-tools/         RX decoder/audio development tooling
-dist/          local build output; ignored
-PLUGIN-DEV.sh  build/sign/inspect helper
-```
-
-## Developer helper
-
-With `ywd-hotspot` and `ywd-hotspot-plugins` checked out beside one another:
+On a Linux development machine, keep the two repositories beside one another:
 
 ```bash
-./PLUGIN-DEV.sh
+sudo apt update
+sudo apt install -y git python3 openssl
+
+mkdir -p ~/src
+cd ~/src
+
+git clone --branch dev-plugins https://github.com/merberg-ai/ywd-hotspot.git
+git clone --branch dev-plugins https://github.com/merberg-ai/ywd-hotspot-plugins.git
+
+cd ywd-hotspot-plugins
 ```
 
-Command mode:
+Create a local Ed25519 publisher key once:
 
 ```bash
-./PLUGIN-DEV.sh list
-./PLUGIN-DEV.sh validate <plugin-id>
-./PLUGIN-DEV.sh sign <plugin-id>
-./PLUGIN-DEV.sh verify dist/<package>.ywdplugin
+./PLUGIN-DEV.sh keys
 ```
 
-`PLUGIN-DEV.sh` is orchestration only. The canonical package builder is still:
+Use your own publisher name/callsign and a unique key ID when prompted. The private key is stored under your user configuration directory, **outside both Git repositories**.
+
+Then build the currently selected RX Monitor package:
+
+```bash
+./BUILD-RX-MONITOR.sh
+```
+
+Output:
 
 ```text
-ywd-hotspot/tools/ywdplugin-build.py
+dist/dmr-rx-monitor-0.4.0-alpha19.ywdplugin
 ```
 
-## Plugin kinds
+The wrapper uses the proven Phase 3J builder, validates the assembled UI against the matching core checkout, signs the package, verifies that no AMBE/mbelib/Wasm decoder is bundled, and prints useful verification/trust-key commands when complete.
 
-```text
-declarative  trusted core interprets metadata/config; no plugin executable code
-service      signed Python entrypoint in shared hardened Pi sandbox
-ui           signed JS/CSS inside isolated dashboard iframe; no Pi daemon
+Full walkthrough: **[Building DMR RX Monitor](docs/BUILD-RX-MONITOR.md)**.
+
+## Installing the package on a hotspot
+
+UI plugins must be signed by a key the hotspot trusts. After creating your publisher key:
+
+```bash
+./PLUGIN-DEV.sh trust-command
 ```
 
-Current plugins never independently own RF serial, start a competing MMDVM instance, receive arbitrary sudo, or gain RF TX authority.
-
-## Package install/update behavior
-
-Core now supports both new installs and transactional same-ID package updates.
-
-New package:
-
-```text
-UPLOAD → VERIFY/REVIEW → INSTALL → ENABLE
-```
-
-Existing uploaded plugin:
-
-```text
-UPLOAD → VERIFY/REVIEW → UPDATE / REINSTALL / DOWNGRADE / REPLACE
-```
-
-A confirmed update preserves config/data and prior valid installed/enabled state, with rollback if package replacement fails. The old manual disable/uninstall/remove/re-upload sequence is no longer required for a normal update.
-
-## RX Monitor status
-
-The DMR RX Monitor development path has physically proven:
-
-- capability-gated passive DMR frame access;
-- browser DMR deinterleave/FEC/49-bit AMBE+2 recovery;
-- bounded capture diagnostics;
-- offline AMBE→PCM proof;
-- browser decoder proof;
-- live network audio including busy AUTO operation;
-- live RF-side browser audio;
-- external YWD Vocoder Protocol v1 STATUS/RESET/DECODE from the sandboxed RX Monitor through the trusted dashboard boundary, with no decoder shipped in the plugin.
-
-The **public canonical source directory is intentionally not yet promoted to the live-audio package**. `plugins/dmr-rx-monitor` remains the compact canonical recovery/diagnostic source, while development candidates are staged by the phase tools.
-
-`tools/phase3g/BUILD-LIVE-EXTERNAL-CANDIDATE.sh` is the current no-decoder live-audio candidate path. It keeps the proven browser playout/call-selection behavior while replacing the old embedded decoder boundary with 5-frame/100 ms requests to a separately installed YWD Vocoder Protocol v1 backend. Pending audio is bounded and dropped rather than allowed to backpressure RF.
-
-Generated decoder output remains ignored and is not part of Phase 3G.
-
-## RX development tooling
-
-```text
-tools/phase3c   offline capture → WAV proof
-tools/phase3d   historical local browser decoder build/playback proof
-tools/phase3e   historical embedded-decoder live-audio proof/polish
-tools/phase3f   proven external-vocoder browser/core/socket diagnostic boundary
-tools/phase3g   external-vocoder live-audio integration (no decoder shipped)
-```
-
-These directories are development history/tooling, not separate user-facing plugins. Once RX Monitor has a canonical distributable source form, the historical proof tooling can be archived/consolidated.
-
-## Signing keys
-
-Publisher private keys stay outside both repositories, normally under developer-owned configuration such as:
-
-```text
-~/.config/ywd-hotspot-plugins/
-```
-
-Only a publisher's **public** key belongs on a hotspot under:
+Copy **only the public key** to the hotspot and install it under:
 
 ```text
 /etc/ywd-hotspot/plugin-trust.d/<key-id>.pem
 ```
 
-Never commit a signing private key.
+Then upload the `.ywdplugin` file in **Plugins** in the YWD-Hotspot dashboard, review it, install it, and enable it.
 
-## Reference packages
+Live RX speech additionally requires a separately installed **YWD Vocoder Protocol v1** backend. The plugin does not contain or download an AMBE software decoder. See the core guide:
 
-`examples/ui-smoke-test` and `examples/upload-smoke-test` are retained as framework validation fixtures, not end-user features. Keeping them under `examples/` prevents proof packages from looking like promoted plugins while preserving reproducible lifecycle/sandbox tests.
+**[External YWD Vocoder Backend](https://github.com/merberg-ai/ywd-hotspot/blob/dev-plugins/docs/VOCODER.md)**
+
+## Current RX Monitor baseline
+
+The selected and physically tested streamed-audio package is:
+
+```text
+dmr-rx-monitor 0.4.0-alpha19
+```
+
+The trust boundary is:
+
+```text
+MMDVM-Host
+   ↓ passive accepted voice copy
+trusted YWD-Hotspot core
+   ↓ direct local live IPC
+DMR recovery / FEC / 10-frame batching
+   ↓
+external YWD Vocoder Protocol v1 backend
+   ↓ PCM over trusted stream
+sandboxed RX Monitor iframe
+   ↓
+Web Audio playout
+```
+
+The plugin receives PCM only for live speech. It has no direct modem, serial, MQTT, AF_UNIX, generic network, or RF-TX authority and contains no mbelib source/binary or AMBE Wasm decoder.
+
+More detail: **[DMR RX Monitor README](plugins/dmr-rx-monitor/README.md)**.
+
+## Repository layout
+
+```text
+plugins/             plugin source boundaries
+examples/            harmless framework validation fixtures
+docs/                user/developer documentation
+tools/phase3j/       retained RX Monitor streamed-audio assembly components
+dist/                local package output; ignored by Git
+BUILD-RX-MONITOR.sh  easiest current RX Monitor build command
+PLUGIN-DEV.sh        generic validate/sign/inspect/key helper
+```
+
+Older `tools/phase3*` directories are implementation/proof history. Users building the current RX Monitor should use `BUILD-RX-MONITOR.sh`, not guess which historical phase script is current.
+
+## Generic plugin development
+
+For plugins whose canonical source under `plugins/<id>/` is directly distributable, `PLUGIN-DEV.sh` provides the normal workflow:
+
+```bash
+./PLUGIN-DEV.sh list
+./PLUGIN-DEV.sh validate <plugin-id>
+./PLUGIN-DEV.sh sign <plugin-id>
+./PLUGIN-DEV.sh inspect dist/<package>.ywdplugin
+./PLUGIN-DEV.sh verify dist/<package>.ywdplugin
+```
+
+`PLUGIN-DEV.sh` delegates actual packaging to the canonical builder in the sibling core repository:
+
+```text
+ywd-hotspot/tools/ywdplugin-build.py
+```
+
+RX Monitor is currently special: `plugins/dmr-rx-monitor/` is the stable diagnostic/capture source boundary, while the physically selected Phase 3J live-audio layer is assembled reproducibly during packaging. Use `./BUILD-RX-MONITOR.sh` for the current live package rather than generic `./PLUGIN-DEV.sh sign dmr-rx-monitor`.
+
+See **[Plugin Development](docs/DEVELOPMENT.md)** for authoring details.
+
+## Signing keys
+
+Local builder configuration lives under:
+
+```text
+~/.config/ywd-hotspot-plugins/build.json
+```
+
+Generated keys normally live below:
+
+```text
+~/.config/ywd-hotspot-plugins/keys/<key-id>/
+```
+
+Rules:
+
+- private publisher keys stay on the development workstation;
+- never commit a private key;
+- never copy the private key to the hotspot;
+- only the matching public key belongs in the hotspot trust directory;
+- losing a private key means you can no longer produce updates under that publisher identity.
+
+## Plugin kinds
+
+```text
+declarative  trusted core interprets metadata/config; no plugin executable code
+service      signed Python entrypoint in the shared hardened service sandbox
+ui           signed JS/CSS in an isolated dashboard iframe; no Pi-side daemon
+```
+
+Current plugin APIs do not grant independent MMDVM ownership, arbitrary sudo, custom systemd units, or RF TX authority.
+
+## Package lifecycle
+
+New install:
+
+```text
+UPLOAD → VERIFY/REVIEW → INSTALL → ENABLE → ACTIVE
+```
+
+Same-ID update:
+
+```text
+UPLOAD → VERIFY/REVIEW → UPDATE / REINSTALL / DOWNGRADE / REPLACE
+```
+
+Core preserves valid config/data and prior intent across transactional package replacement and attempts rollback if replacement fails.
+
+## Documentation
+
+Start with **[docs/README.md](docs/README.md)**.
+
+Useful guides:
+
+- **[Build DMR RX Monitor](docs/BUILD-RX-MONITOR.md)**
+- **[Plugin Development](docs/DEVELOPMENT.md)**
+- **[DMR RX Monitor](plugins/dmr-rx-monitor/README.md)**
+- **[Phase 3J maintainer notes](tools/phase3j/README.md)**
+- **[Core plugin documentation](https://github.com/merberg-ai/ywd-hotspot/blob/dev-plugins/docs/PLUGINS.md)**
 
 ## Safety contract
 
-- `rf_mode = false` for current supported plugins;
+- current supported plugins use `rf_mode = false`;
 - no direct `/dev/serial0` ownership;
 - no competing MMDVM-Host;
 - no arbitrary sudo;
@@ -140,5 +205,5 @@ Never commit a signing private key.
 - UI plugins run in isolated iframes;
 - executable service/UI packages require trusted Ed25519 signatures;
 - install does not imply enable;
-- master OFF remains authoritative;
+- master Plugin Support OFF remains authoritative;
 - private signing keys are never committed or stored on the hotspot.
