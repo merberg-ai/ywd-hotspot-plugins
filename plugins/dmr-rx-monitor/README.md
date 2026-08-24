@@ -39,6 +39,16 @@ The plugin contains no AMBE software vocoder, mbelib binary/source, or Wasm deco
 
 The matching tested core policy uses a 12-burst bounded live tail, 400 ms decoder timeout, and external decoder scheduling policy `Nice=0` / `CPUWeight=200`.
 
+## External vocoder requirement
+
+Live speech requires a separately installed **YWD Vocoder Protocol v1** backend. The plugin never installs or downloads the decoder itself.
+
+Current setup/verification guide:
+
+https://github.com/merberg-ai/ywd-hotspot/blob/dev-plugins/docs/VOCODER.md
+
+The current deployment kit fetches pinned upstream mbelib source at install time rather than bundling mbelib inside this repository's `.ywdplugin` package.
+
 ## Source layout
 
 The canonical `plugins/dmr-rx-monitor/` directory remains the stable diagnostic/capture source boundary. The Phase 3J streamed-audio layer is assembled reproducibly from `tools/phase3j/` so the external-decoder distribution boundary stays explicit and no generated decoder material is committed into the plugin.
