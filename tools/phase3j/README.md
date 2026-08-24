@@ -1,50 +1,113 @@
-# Phase 3J streamed RX audio
+# Phase 3J Streamed RX Audio — Maintainer Notes
 
-This directory contains the retained development/build components for the proven DMR RX Monitor streamed-audio candidate on `dev-plugins`.
+[← Build guide](../../docs/BUILD-RX-MONITOR.md) · [DMR RX Monitor](../../plugins/dmr-rx-monitor/README.md)
+
+This directory contains the retained assembly components for the physically selected DMR RX Monitor streamed-audio package on `dev-plugins`.
+
+> [!TIP]
+> End users/builders should normally run `./BUILD-RX-MONITOR.sh` from the repository root. This directory documents how that wrapper assembles the tested package.
 
 ## Selected baseline
 
-The cleanup baseline intentionally keeps the physically tested Alpha19 behavior rather than the later elasticity experiment:
+```text
+plugin package             dmr-rx-monitor 0.4.0-alpha19
+browser target reservoir   400 ms
+browser emergency ceiling  700 ms
+adaptive playback          gentle +/-1%, 40 ms deadband
+normal decoder reset       preserve scheduled PCM
+explicit drop/error        rebuffer
+browser output             48 kHz Web Audio
+trusted core batch         10 AMBE frames / 200 ms
+core live burst tail       12 DMR bursts (~720 ms)
+core vocoder timeout       400 ms
+external vocoder policy    Nice=0 / CPUWeight=200
+```
 
-- plugin package: `dmr-rx-monitor 0.4.0-alpha19`
-- browser target reservoir: 400 ms
-- browser emergency scheduled-depth ceiling: 700 ms
-- adaptive playback correction: gentle +/-1% with a 40 ms deadband
-- normal decoder-state resets preserve already-buffered PCM
-- explicit stream drop/error events rebuffer
-- output: 48 kHz Web Audio
-- trusted core batching: 10 AMBE frames / 200 ms
-- external decoder only; no mbelib/Wasm decoder is bundled in the plugin
+The later Alpha20 900 ms emergency-reservoir / deeper-tail experiment was discarded because it did not show a useful enough improvement to justify the added elasticity.
 
-The matching core baseline uses direct AF_UNIX datagram live voice IPC, a 12-burst (~720 ms) bounded live tail, a 400 ms vocoder request timeout, and YWD-managed external decoder scheduling policy `Nice=0` / `CPUWeight=200`.
+## User-facing build command
 
-## Build
+From the repository root:
 
-From the plugin repository root:
+```bash
+./BUILD-RX-MONITOR.sh
+```
+
+That wrapper verifies basic prerequisites/signing configuration and calls:
 
 ```bash
 bash tools/phase3j/BUILD-STREAMED-LIVE-CANDIDATE.sh
 ```
 
-The signed package is written to:
+Output:
 
 ```text
 dist/dmr-rx-monitor-0.4.0-alpha19.ywdplugin
 ```
 
-Signing configuration continues to come from the normal plugin development configuration.
+Signing configuration comes from:
 
-## Retained source components
+```text
+~/.config/ywd-hotspot-plugins/build.json
+```
 
-- `streamed-live-audio.js` — one persistent streamed-PCM Web Audio client and reservoir controller.
-- `stream-polish.js` — RX Monitor streamed-audio UI/polish layer.
-- `alpha19-playout-patch.py` — small reproducible overlay that makes normal decoder-state resets non-destructive to buffered PCM, renames keepalive UI to heartbeats, and clears stale transient errors after PCM resumes.
-- `BUILD-STREAMED-LIVE-CANDIDATE.sh` — validates the source boundary, assembles the Alpha19 candidate, verifies the no-bundled-vocoder rule, and signs the package.
+and is normally created with:
 
-The discarded Alpha20 900 ms emergency-reservoir experiment is intentionally not part of the selected baseline.
+```bash
+./PLUGIN-DEV.sh keys
+```
+
+## Retained components
+
+- `streamed-live-audio.js` — persistent streamed-PCM Web Audio client, reservoir controller, stats and live controls.
+- `stream-polish.js` — streamed-audio UI/polish layer.
+- `alpha19-playout-patch.py` — preserves buffered PCM across normal decoder-state resets, renames the status counter to HEARTBEATS, and clears stale transient error text after PCM resumes.
+- `BUILD-STREAMED-LIVE-CANDIDATE.sh` — assembles and validates the signed Alpha19 package.
+
+The builder starts with the stable diagnostic/capture source under `plugins/dmr-rx-monitor/`, stages a temporary copy, applies the retained streamed-audio layers, validates it against the matching core checkout, and signs the final `.ywdplugin`.
+
+## Build invariants
+
+The Phase 3J builder fails closed if the selected package no longer satisfies important tested assumptions, including:
+
+- required `ui:section`, `read:dmr-voice`, and `use:vocoder` capabilities;
+- required demand-gated passive DMR voice dependency;
+- no mbelib or Wasm decoder files in the staged plugin;
+- no legacy browser decode/POST worker path;
+- streamed audio API hook present;
+- 400 ms target / 700 ms emergency reservoir settings present;
+- gentle +/-1% playback correction present;
+- reset-tolerant Alpha19 behavior present;
+- Plugin UI v1 JavaScript size ceiling respected;
+- manifest validates through current core;
+- package is signed with the configured publisher key.
+
+If Node.js exists locally, JavaScript syntax is also checked with `node --check`.
 
 ## Architecture boundary
 
-Live RF/DMR ownership remains in trusted YWD-Hotspot core. The sandboxed plugin receives PCM stream events only. It has no direct serial, MMDVM, MQTT, AF_UNIX, or generic network access and contains no AMBE speech decoder.
+```text
+MMDVM-Host / normal RF path
+        ↓ passive copy
+trusted YWD-Hotspot voice bridge
+        ↓ direct local live IPC
+trusted DMR recovery/FEC/batching
+        ↓
+external YWD Vocoder Protocol v1 backend
+        ↓ PCM
+trusted NDJSON stream
+        ↓
+sandboxed RX Monitor iframe
+```
 
-The older diagnostic/capture layer remains available independently of live audio.
+The plugin has no direct serial, MMDVM, MQTT, AF_UNIX, generic network, or RF-TX authority. It contains no software AMBE decoder.
+
+External decoder setup belongs to YWD-Hotspot core documentation:
+
+**[External YWD Vocoder Backend](https://github.com/merberg-ai/ywd-hotspot/blob/dev-plugins/docs/VOCODER.md)**
+
+## Why the source is still assembled
+
+The current cleanup deliberately does not rewrite the physically proven Alpha19 implementation merely to make the source tree prettier. `plugins/dmr-rx-monitor/` stays the stable diagnostic/capture source boundary and this directory contains the reproducible streamed-audio overlay that produced the tested package.
+
+A future source-consolidation pass should be treated as a new implementation change and physically retested rather than silently replacing this proven assembly.
