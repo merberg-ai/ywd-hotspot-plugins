@@ -1,22 +1,14 @@
 # DMR RX Monitor
 
-[← Repository README](../../README.md) · [Build guide](../../docs/BUILD-RX-MONITOR.md)
+DMR RX Monitor is a sandboxed YWD-Hotspot UI plugin for passive DMR frame diagnostics, bounded capture/export, and optional streamed RX audio.
 
-DMR RX Monitor is a sandboxed YWD-Hotspot browser UI plugin for passive DMR diagnostics, bounded capture/export, and optional streamed RX speech.
-
-## Current development package
-
-The selected Phase 3J package on `dev-plugins` is:
+## Current package
 
 ```text
 dmr-rx-monitor 0.4.0-alpha19
 ```
 
-It is a pre-release build intended for a matching YWD-Hotspot `dev-plugins` core.
-
-## Fast build
-
-From the plugin repository root, after configuring a signing key once with `./PLUGIN-DEV.sh keys`:
+Build from the repository root:
 
 ```bash
 ./BUILD-RX-MONITOR.sh
@@ -28,17 +20,15 @@ Output:
 dist/dmr-rx-monitor-0.4.0-alpha19.ywdplugin
 ```
 
-Full first-time setup, signing, trust-key, upload, and troubleshooting instructions:
-
-**[Build DMR RX Monitor](../../docs/BUILD-RX-MONITOR.md)**
+Full build/install guide: [`docs/BUILD-RX-MONITOR.md`](../../docs/BUILD-RX-MONITOR.md).
 
 ## Live-audio architecture
 
 ```text
-MMDVM accepted voice copy
+MMDVM accepted DMR voice
         ↓
 trusted YWD-Hotspot core
-  direct local AF_UNIX live path
+  direct local live IPC
   DMR AMBE/FEC recovery
   10-frame / 200 ms batching
         ↓
@@ -47,90 +37,71 @@ external YWD Vocoder Protocol v1 backend
 one persistent NDJSON PCM stream
         ↓
 sandboxed RX Monitor iframe
-  Web Audio playout only
+  Web Audio reservoir/playout only
 ```
 
-The plugin package contains **no AMBE software vocoder, mbelib source/binary, or Wasm decoder**.
+The plugin contains no mbelib source/binary, AMBE software vocoder, or AMBE Wasm decoder.
 
-Live speech requires a separately installed YWD Vocoder Protocol v1 backend. Setup guide:
+## Selected playout behavior
 
-**[External YWD Vocoder Backend](https://github.com/merberg-ai/ywd-hotspot/blob/dev-plugins/docs/VOCODER.md)**
+- 400 ms target browser reservoir;
+- 700 ms emergency scheduled-depth ceiling;
+- gentle +/-1% adaptive playback correction;
+- normal decoder-state resets do not discard already-buffered PCM;
+- explicit stream drop/error events rebuffer;
+- 48 kHz browser Web Audio output.
 
-## Selected audio baseline
+The matching core baseline uses a 12-burst bounded live tail, 400 ms vocoder request timeout, and external decoder scheduling policy `Nice=0` / `CPUWeight=200`.
 
-Current physically selected tuning:
+## External vocoder
+
+Live speech requires a separately installed YWD Vocoder Protocol v1 backend. The plugin never installs/downloads a decoder.
+
+Setup guide:
+
+**[YWD-Hotspot External Vocoder Backend](https://github.com/merberg-ai/ywd-hotspot/blob/dev/docs/VOCODER.md)**
+
+## Source boundary
+
+`plugins/dmr-rx-monitor/` contains the stable diagnostic/capture source boundary. The current streamed-audio package adds the proven Alpha19 audio layer from `tools/rx-monitor/` during build.
+
+This split is intentional for now: it preserves the physically selected package behavior without pretending that the older base source directory alone is the live-audio distributable.
+
+Active build internals:
 
 ```text
-trusted core batch        10 AMBE frames / 200 ms
-core live burst tail      12 DMR bursts (~720 ms)
-core decoder timeout      400 ms
-browser target reservoir  400 ms
-browser emergency ceiling 700 ms
-playback correction       gentle +/-1%
+tools/rx-monitor/
 ```
 
-Normal decoder-state resets preserve already-buffered PCM. Explicit stream drop/error events still rebuffer.
+Historical Phase 3x proof directories are no longer carried in the active tree.
 
-The external backend scheduling policy is managed by current YWD-Hotspot core as:
+## Capabilities
 
 ```text
-Nice=0
-CPUWeight=200
+ui:section
+read:dmr-voice
+use:vocoder
 ```
 
-## Capabilities / requirements
-
-The current streamed package uses:
+Dependency:
 
 ```text
-capabilities:
-  ui:section
-  read:dmr-voice
-  use:vocoder
-
-dependency:
-  mmdvm-cap-demand-gated-dmr-voice
+mmdvm-cap-demand-gated-dmr-voice
 ```
-
-The target hotspot therefore needs the YWD Extended MMDVM runtime/capability rather than Stock Upstream for passive DMR voice monitoring.
 
 ## Security boundary
 
-RX Monitor has no modem or transmitter ownership:
+RX Monitor has:
 
 - no direct serial/MMDVM access;
 - no direct MQTT access;
-- no direct AF_UNIX access from the plugin sandbox;
+- no direct AF_UNIX socket access;
 - no generic network access from the iframe;
-- no arbitrary sudo;
 - no RF transmit authority;
-- trusted core controls the passive voice and PCM stream capabilities;
-- capture history remains bounded/local to the page.
+- bounded capture history local to the plugin page.
 
-MMDVM-Host remains the sole modem/RF owner.
+Trusted core owns all privileged transport/recovery/vocoder work and delivers only capability-scoped data/PCM to the sandbox.
 
-## Source/build layout
+## Diagnostics
 
-`plugins/dmr-rx-monitor/` remains the stable diagnostic/capture source boundary.
-
-The current streamed-audio distributable is assembled reproducibly at package time from retained Phase 3J components under:
-
-```text
-tools/phase3j/
-```
-
-This preserves the physically tested Alpha19 implementation without committing generated decoder artifacts or moving decoder code into the plugin package.
-
-End users/builders should use:
-
-```bash
-./BUILD-RX-MONITOR.sh
-```
-
-Maintainers who need the assembly details can read **[tools/phase3j/README.md](../../tools/phase3j/README.md)**.
-
-## Diagnostic recovery layer
-
-For accepted DMR voice bursts, the diagnostic layer can recover three AMBE+2 2450 frames per burst, track corrected/unrecoverable data and sequence gaps, and maintain a bounded capture ring for export.
-
-Speech synthesis itself is performed only by the separately installed external vocoder backend through trusted YWD-Hotspot core; the sandboxed plugin receives PCM.
+For accepted DMR voice bursts, the diagnostic layer tracks recovered AMBE+2 2450 frames, FEC corrections/unrecoverable data, sequence continuity, bounded capture/export, stream health, decode RTT, dropped bursts, underruns, resets, and reanchors.

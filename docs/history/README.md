@@ -1,13 +1,24 @@
-# Historical RX Monitor Notes
+# Historical Plugin Documentation
 
-[← Plugin docs](../README.md)
+[← Docs index](../README.md)
 
-This directory preserves old implementation observations for development provenance. These files are **not current build or installation instructions**.
+Current build/development instructions live directly under `docs/`. This directory keeps historical observations and condensed development history so old proof work remains understandable without cluttering the active workflow.
 
-Current users should begin with:
+## RX Monitor
 
-- [Build DMR RX Monitor](../BUILD-RX-MONITOR.md)
-- [DMR RX Monitor README](../../plugins/dmr-rx-monitor/README.md)
-- [Phase 3J maintainer notes](../../tools/phase3j/README.md)
+- **[RX Monitor Development History](RX-MONITOR-DEVELOPMENT.md)** — Phase 3C through the selected Phase 3J/Alpha19 architecture.
+- **[Phase 3H Alpha15 observation](phase3h-alpha15-observation.md)** — retained physical observation from the persistent-vocoder transition.
 
-Historical notes may describe superseded browser decoders, polling paths, timing values, or Alpha versions that no longer match the selected Phase 3J architecture.
+The old `tools/phase3c` … `tools/phase3j` directories were removed from the active `dev` tree during repository cleanup. Their exact source remains recoverable from Git history and checkpoint refs.
+
+A convenient pre-cleanup source snapshot is:
+
+```text
+b3c3e741f83e9f1204a9eb36027f84e71f0ce7e3
+```
+
+The final selected package checkpoint remains:
+
+```text
+checkpoint-dev-plugins-phase3j-alpha19-proven
+```
