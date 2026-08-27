@@ -7,6 +7,8 @@
   let timer = null;
   let directoryMeta = null;
   let busy = false;
+  let lookupBusy = false;
+  let lookupTicker = null;
 
   root.innerHTML = `
     <main class="shell">
@@ -26,9 +28,9 @@
         </div>
         <form id="lookupForm" class="lookup-form">
           <input id="lookupInput" type="text" maxlength="32" autocomplete="off" spellcheck="false" placeholder="Callsign or DMR ID" aria-label="Callsign or DMR ID">
-          <button type="submit">LOOK UP</button>
+          <button id="lookupButton" type="submit"><span class="lookup-spinner" aria-hidden="true"></span><span id="lookupButtonLabel">LOOK UP</span></button>
         </form>
-        <div id="lookupMessage" class="hint">Try a callsign such as KJ6YWD or a numeric DMR ID.</div>
+        <div id="lookupMessage" class="hint lookup-status" role="status" aria-live="polite">Try a callsign such as KJ6YWD or a numeric DMR ID.</div>
         <div id="lookupResults" class="results"></div>
       </section>
 
@@ -200,11 +202,47 @@
       </article>`).join('');
   }
 
-  async function search(query) {
+  function setLookupState(state, text) {
     const message = $('lookupMessage');
+    const button = $('lookupButton');
+    message.className = `hint lookup-status ${state || ''}`.trim();
+    if (text !== undefined) message.textContent = String(text);
+    button.classList.toggle('busy', state === 'busy');
+    button.disabled = state === 'busy';
+    $('lookupInput').disabled = state === 'busy';
+    $('lookupButtonLabel').textContent = state === 'busy' ? 'LOOKING UP…' : 'LOOK UP';
+  }
+
+  function lookupSummary(rows, response, clientMs) {
+    const diag = response?.diagnostics || {};
+    const elapsed = Number.isFinite(Number(diag.elapsed_ms)) ? Number(diag.elapsed_ms) : Math.max(0, Math.round(clientMs));
+    const scanned = Number.isFinite(Number(diag.scanned_records)) ? Number(diag.scanned_records) : null;
+    const parts = [`${rows.length} local match${rows.length === 1 ? '' : 'es'}`, `${elapsed} ms`];
+    if (diag.cache_hit) parts.push('recent cache');
+    else if (scanned !== null) parts.push(`${scanned.toLocaleString()} records checked`);
+    return parts.join(' · ');
+  }
+
+  function nextPaint() {
+    return new Promise(resolve => requestAnimationFrame(() => resolve()));
+  }
+
+  async function search(query) {
+    if (lookupBusy) return;
+    lookupBusy = true;
+    const started = performance.now();
     const results = $('lookupResults');
-    message.textContent = 'Searching local directory…';
     results.innerHTML = '';
+    setLookupState('busy', 'Searching the local RadioID directory…');
+    clearInterval(lookupTicker);
+    lookupTicker = setInterval(() => {
+      const seconds = Math.max(1, Math.floor((performance.now() - started) / 1000));
+      setLookupState('busy', `Searching the local RadioID directory… ${seconds}s`);
+    }, 1000);
+
+    // Guarantee at least one paint with the busy state visible before the
+    // MessageChannel request begins. This matters on slower mobile browsers.
+    await nextPaint();
     try {
       const response = await window.ywdPlugin.searchDmrDirectory(query, {limit:15});
       updateDirectoryMeta(response?.database);
@@ -214,17 +252,30 @@
         if (Number.isInteger(ident) && ident > 0) known.set(ident, row?.callsign ? String(row.callsign).toUpperCase() : '');
       }
       renderSearch(rows);
-      message.textContent = rows.length ? `${rows.length} local match${rows.length === 1 ? '' : 'es'}.` : 'No local match.';
+      setLookupState(rows.length ? 'good' : 'idle', lookupSummary(rows, response, performance.now() - started));
     } catch (error) {
-      message.textContent = String(error?.message || error);
-      results.innerHTML = '';
+      results.innerHTML = '<div class="empty error-box">Lookup failed. The activity feed remains unaffected.</div>';
+      setLookupState('bad', `Lookup error: ${String(error?.message || error)}`);
+    } finally {
+      clearInterval(lookupTicker);
+      lookupTicker = null;
+      lookupBusy = false;
+      $('lookupButton').classList.remove('busy');
+      $('lookupButton').disabled = false;
+      $('lookupInput').disabled = false;
+      $('lookupButtonLabel').textContent = 'LOOK UP';
+      $('lookupInput').focus({preventScroll:true});
     }
   }
 
   $('lookupForm').addEventListener('submit', event => {
     event.preventDefault();
     const query = $('lookupInput').value.trim();
-    if (query) void search(query);
+    if (!query) {
+      setLookupState('bad', 'Enter a callsign or numeric DMR ID first.');
+      return;
+    }
+    void search(query);
   });
   $('refreshButton').addEventListener('click', () => void refresh());
 
@@ -246,6 +297,9 @@
     }
   }
 
-  window.addEventListener('pagehide', () => { if (timer) clearInterval(timer); }, {once:true});
+  window.addEventListener('pagehide', () => {
+    if (timer) clearInterval(timer);
+    if (lookupTicker) clearInterval(lookupTicker);
+  }, {once:true});
   void init();
 })();
