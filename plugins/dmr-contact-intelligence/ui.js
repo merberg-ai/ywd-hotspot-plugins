@@ -22,7 +22,7 @@
         <span id="bridgeStatus" class="pill pending">CONNECTING</span>
       </header>
 
-      <section class="panel lookup-panel">
+      <section id="lookupPanel" class="panel lookup-panel">
         <div class="section-head">
           <div><span class="kicker">DIRECTORY</span><h2>Find a station</h2></div>
           <div id="directoryStatus" class="meta">RadioID directory</div>
@@ -84,6 +84,17 @@
     catch (_) { return '—'; }
   }
 
+  function compactDateTime(ts) {
+    const t = Number(ts);
+    if (!Number.isFinite(t) || t <= 0) return '—';
+    try {
+      const date = new Date(t * 1000);
+      const options = {month:'short', day:'numeric', hour:'numeric', minute:'2-digit'};
+      if (date.getFullYear() !== new Date().getFullYear()) options.year = 'numeric';
+      return date.toLocaleString([], options);
+    } catch (_) { return '—'; }
+  }
+
   function timeLabel(ts) {
     const t = Number(ts);
     if (!Number.isFinite(t) || t <= 0) return '—';
@@ -94,6 +105,15 @@
   function duration(event) {
     const n = Number(event?.duration_s);
     return Number.isFinite(n) ? `${n.toFixed(1)}s` : (event?.active ? 'LIVE' : '—');
+  }
+
+  function airtime(value) {
+    const seconds = Math.max(0, Math.round(Number(value) || 0));
+    if (seconds < 60) return `${seconds}s`;
+    if (seconds < 3600) return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    return `${hours}h ${minutes}m`;
   }
 
   function dmrId(event) {
@@ -112,6 +132,21 @@
       ident,
       call,
     };
+  }
+
+  function stationQuery(who) {
+    if (who?.ident) return String(who.ident);
+    return String(who?.call || '').trim().toUpperCase();
+  }
+
+  function stationLabel(who) {
+    return String(who?.call || who?.primary || '').trim().toUpperCase();
+  }
+
+  function stationControl(who, extraClass = '') {
+    const query = stationQuery(who);
+    if (!query) return `<b>${esc(who?.primary || 'Unknown')}</b>`;
+    return `<button type="button" class="station-link ${esc(extraClass)}" data-station-query="${esc(query)}" data-station-label="${esc(stationLabel(who))}">${esc(who?.primary || query)}</button>`;
   }
 
   function destination(event) {
@@ -136,7 +171,7 @@
     box.className = `current active ${String(event.path || '').toLowerCase()}`;
     box.innerHTML = `
       <div class="signal-dot"></div>
-      <div class="current-main"><b>${esc(who.primary)}</b><span>${esc(who.secondary)}</span></div>
+      <div class="current-main">${stationControl(who, 'current-station-link')}<span>${esc(who.secondary)}</span></div>
       <div class="current-dest"><b>${esc(destination(event))}</b><span>${esc(event.path || '')} · Slot ${esc(event.slot ?? '—')}</span></div>`;
   }
 
@@ -152,7 +187,7 @@
         ? `BER ${Number(event.ber_pct).toFixed(1)}%`
         : Number.isFinite(Number(event?.packet_loss_pct)) ? `LOSS ${Number(event.packet_loss_pct).toFixed(0)}%` : '';
       return `<article class="activity-row">
-        <div class="who"><b>${esc(who.primary)}</b><span>${esc(who.secondary)}</span></div>
+        <div class="who">${stationControl(who)}<span>${esc(who.secondary)}</span></div>
         <div class="where"><b>${esc(destination(event))}</b><span>${esc(event.path || 'DMR')} · ${esc(metric || event.status || '')}</span></div>
         <div class="when"><b>${esc(duration(event))}</b><span>${esc(timeLabel(event.started_at))}</span></div>
       </article>`;
@@ -192,9 +227,11 @@
     try {
       const activity = await window.ywdPlugin.readDmrActivity({limit:config.recent_limit});
       await resolveRows(activity);
+      const rows = Array.isArray(activity?.lastheard) ? activity.lastheard : [];
       renderCurrent(activity?.current || {});
-      renderRows(activity?.lastheard || []);
-      $('updatedAt').textContent = activity?.updated_at ? `Updated ${age(activity.updated_at)}` : 'Updated now';
+      renderRows(rows);
+      const updated = activity?.updated_at ? `updated ${age(activity.updated_at)}` : 'updated now';
+      $('updatedAt').textContent = `${rows.length} recent · ${updated}`;
       $('bridgeStatus').className = 'pill good';
       $('bridgeStatus').textContent = 'LIVE';
     } catch (error) {
@@ -256,9 +293,10 @@
       const lastDest = destinationFromObservation(obs);
       const history = obs
         ? `<div class="history-grid">
-            <div><span>FIRST SEEN</span><b>${esc(dateTime(obs.first_seen))}</b></div>
+            <div><span>FIRST SEEN</span><b class="history-time" title="${esc(dateTime(obs.first_seen))}">${esc(compactDateTime(obs.first_seen))}</b></div>
             <div><span>LAST HEARD</span><b>${esc(age(obs.last_seen))}</b></div>
             <div><span>QSOs</span><b>${esc(obs.qso_count)}</b></div>
+            <div><span>AIRTIME</span><b>${esc(airtime(obs.total_duration_s))}</b></div>
             <div><span>PATHS</span><b>${esc(`${obs.rf_count} RF · ${obs.network_count} NET`)}</b></div>
           </div>
           ${lastDest ? `<div class="last-route">Last: <b>${esc(lastDest)}</b>${obs.last_path ? ` · ${esc(obs.last_path)}` : ''}${obs.last_slot ? ` · Slot ${esc(obs.last_slot)}` : ''}</div>` : ''}`
@@ -342,6 +380,20 @@
     void search(query);
   }
 
+  function jumpToStation(target) {
+    const query = String(target?.dataset?.stationQuery || '').trim();
+    const label = String(target?.dataset?.stationLabel || query).trim();
+    if (!query || lookupBusy) return;
+    $('lookupInput').value = label || query;
+    try { $('lookupPanel').scrollIntoView({behavior:'smooth', block:'start'}); } catch (_) {}
+    void search(query);
+  }
+
+  function stationClick(event) {
+    const target = event.target.closest('[data-station-query]');
+    if (target) jumpToStation(target);
+  }
+
   function applyObservedState(collapsed) {
     observedCollapsed = !!collapsed;
     $('observedPanel').classList.toggle('collapsed', observedCollapsed);
@@ -354,6 +406,7 @@
     try {
       const stored = await window.ywdPlugin.getPreference('observed-collapsed');
       if (stored?.found) applyObservedState(stored.value === true);
+      else applyObservedState(false);
     } catch (_) {
       applyObservedState(false);
     }
@@ -373,6 +426,8 @@
   });
   $('refreshButton').addEventListener('click', () => void refresh());
   $('observedToggle').addEventListener('click', () => void toggleObserved());
+  $('currentActivity').addEventListener('click', stationClick);
+  $('activityRows').addEventListener('click', stationClick);
 
   async function init() {
     try {
