@@ -16,7 +16,7 @@
         <div>
           <div class="eyebrow">YWD · DMR IDENTITY</div>
           <h1>Contact Intelligence</h1>
-          <p>Local callsign lookup plus the DMR activity your hotspot is actually seeing.</p>
+          <p>Search the DMR directory and see the activity your hotspot is hearing.</p>
         </div>
         <span id="bridgeStatus" class="pill pending">CONNECTING</span>
       </header>
@@ -24,13 +24,13 @@
       <section class="panel lookup-panel">
         <div class="section-head">
           <div><span class="kicker">DIRECTORY</span><h2>Find a station</h2></div>
-          <div id="directoryStatus" class="meta">Local RadioID directory</div>
+          <div id="directoryStatus" class="meta">RadioID directory</div>
         </div>
         <div id="lookupControls" class="lookup-form">
           <input id="lookupInput" type="text" maxlength="32" autocomplete="off" spellcheck="false" placeholder="Callsign or DMR ID" aria-label="Callsign or DMR ID">
           <button id="lookupButton" type="button"><span class="lookup-spinner" aria-hidden="true"></span><span id="lookupButtonLabel">LOOK UP</span></button>
         </div>
-        <div id="lookupMessage" class="hint lookup-status" role="status" aria-live="polite">Try a callsign such as KJ6YWD or a numeric DMR ID.</div>
+        <div id="lookupMessage" class="hint lookup-status" role="status" aria-live="polite">Search by callsign or numeric DMR ID.</div>
         <div id="lookupResults" class="results"></div>
       </section>
 
@@ -49,8 +49,6 @@
         </div>
         <div id="activityRows" class="activity-list"><div class="empty">Waiting for activity…</div></div>
       </section>
-
-      <footer>Contact Intelligence 0.1.0-alpha3 · local hotspot DMR directory · no arbitrary network access.</footer>
     </main>`;
 
   const $ = id => document.getElementById(id);
@@ -145,8 +143,8 @@
     const m = directoryMeta;
     if (!m) return;
     const text = m.present === false
-      ? 'Local directory unavailable'
-      : `${m.source || 'Local directory'}${m.updated_at ? ` · updated ${age(m.updated_at)}` : ''}`;
+      ? 'Directory unavailable'
+      : `${m.source || 'Directory'}${m.updated_at ? ` · updated ${age(m.updated_at)}` : ''}`;
     $('directoryStatus').textContent = text;
   }
 
@@ -192,13 +190,13 @@
   function renderSearch(rows) {
     const results = $('lookupResults');
     if (!rows.length) {
-      results.innerHTML = '<div class="empty">No matching local DMR contact found.</div>';
+      results.innerHTML = '<div class="empty">No matching station found.</div>';
       return;
     }
     results.innerHTML = rows.map(row => `
       <article class="result-row">
         <div><b>${esc(row.callsign || 'Unknown')}</b><span>DMR ID ${esc(row.dmr_id ?? '—')}</span></div>
-        <span class="source-tag">LOCAL</span>
+        <span class="source-tag">RADIOID</span>
       </article>`).join('');
   }
 
@@ -213,14 +211,9 @@
     $('lookupButtonLabel').textContent = state === 'busy' ? 'LOOKING UP…' : 'LOOK UP';
   }
 
-  function lookupSummary(rows, response, clientMs) {
-    const diag = response?.diagnostics || {};
-    const elapsed = Number.isFinite(Number(diag.elapsed_ms)) ? Number(diag.elapsed_ms) : Math.max(0, Math.round(clientMs));
-    const scanned = Number.isFinite(Number(diag.scanned_records)) ? Number(diag.scanned_records) : null;
-    const parts = [`${rows.length} local match${rows.length === 1 ? '' : 'es'}`, `${elapsed} ms`];
-    if (diag.cache_hit) parts.push('recent cache');
-    else if (scanned !== null) parts.push(`${scanned.toLocaleString()} records checked`);
-    return parts.join(' · ');
+  function lookupSummary(rows) {
+    if (!rows.length) return 'No matches found.';
+    return `${rows.length} match${rows.length === 1 ? '' : 'es'} found.`;
   }
 
   function nextPaint() {
@@ -233,11 +226,11 @@
     const started = performance.now();
     const results = $('lookupResults');
     results.innerHTML = '';
-    setLookupState('busy', 'Searching the local RadioID directory…');
+    setLookupState('busy', 'Searching directory…');
     clearInterval(lookupTicker);
     lookupTicker = setInterval(() => {
       const seconds = Math.max(1, Math.floor((performance.now() - started) / 1000));
-      setLookupState('busy', `Searching the local RadioID directory… ${seconds}s`);
+      setLookupState('busy', `Searching directory… ${seconds}s`);
     }, 1000);
 
     await nextPaint();
@@ -250,9 +243,9 @@
         if (Number.isInteger(ident) && ident > 0) known.set(ident, row?.callsign ? String(row.callsign).toUpperCase() : '');
       }
       renderSearch(rows);
-      setLookupState(rows.length ? 'good' : 'idle', lookupSummary(rows, response, performance.now() - started));
+      setLookupState(rows.length ? 'good' : 'idle', lookupSummary(rows));
     } catch (error) {
-      results.innerHTML = '<div class="empty error-box">Lookup failed. The activity feed remains unaffected.</div>';
+      results.innerHTML = '<div class="empty error-box">Unable to complete lookup.</div>';
       setLookupState('bad', `Lookup error: ${String(error?.message || error)}`);
     } finally {
       clearInterval(lookupTicker);
