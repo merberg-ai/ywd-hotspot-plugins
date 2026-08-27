@@ -9,6 +9,7 @@
   let busy = false;
   let lookupBusy = false;
   let lookupTicker = null;
+  let observedCollapsed = false;
 
   root.innerHTML = `
     <main class="shell">
@@ -42,12 +43,19 @@
         <div id="currentActivity" class="current idle">No active DMR voice session.</div>
       </section>
 
-      <section class="panel">
-        <div class="section-head">
+      <section id="observedPanel" class="panel collapsible-panel">
+        <div class="section-head observed-head">
           <div><span class="kicker">OBSERVED</span><h2>Recent activity</h2></div>
-          <div id="updatedAt" class="meta">—</div>
+          <div class="observed-actions">
+            <div id="updatedAt" class="meta">—</div>
+            <button id="observedToggle" class="ghost collapse-toggle" type="button" aria-expanded="true" aria-controls="observedBody">
+              <span id="observedToggleLabel">HIDE</span><span class="chevron" aria-hidden="true">⌃</span>
+            </button>
+          </div>
         </div>
-        <div id="activityRows" class="activity-list"><div class="empty">Waiting for activity…</div></div>
+        <div id="observedBody">
+          <div id="activityRows" class="activity-list"><div class="empty">Waiting for activity…</div></div>
+        </div>
       </section>
     </main>`;
 
@@ -65,7 +73,15 @@
     if (seconds < 60) return `${seconds}s ago`;
     if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
     if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
-    return `${Math.floor(seconds / 86400)}d ago`;
+    if (seconds < 604800) return `${Math.floor(seconds / 86400)}d ago`;
+    return new Date(t * 1000).toLocaleDateString();
+  }
+
+  function dateTime(ts) {
+    const t = Number(ts);
+    if (!Number.isFinite(t) || t <= 0) return '—';
+    try { return new Date(t * 1000).toLocaleString([], {dateStyle:'medium', timeStyle:'short'}); }
+    catch (_) { return '—'; }
   }
 
   function timeLabel(ts) {
@@ -102,6 +118,11 @@
     const d = event?.destination || {};
     const text = String(d.display || d.id || 'Unknown');
     return d.group ? `TG ${text}` : `ID ${text}`;
+  }
+
+  function destinationFromObservation(obs) {
+    if (!obs || obs.last_destination === null || obs.last_destination === undefined) return '';
+    return obs.last_group ? `TG ${obs.last_destination}` : `ID ${obs.last_destination}`;
   }
 
   function renderCurrent(event) {
@@ -187,17 +208,70 @@
     }
   }
 
-  function renderSearch(rows) {
+  function observationsFor(row, response) {
+    const entries = Array.isArray(response?.observations?.results) ? response.observations.results : [];
+    const ident = Number(row?.dmr_id);
+    const call = String(row?.callsign || '').toUpperCase();
+    const matches = entries.filter(item => {
+      const itemId = Number(item?.dmr_id);
+      const itemCall = String(item?.callsign || '').toUpperCase();
+      return (Number.isInteger(ident) && ident > 0 && itemId === ident) || (call && itemCall === call);
+    });
+    if (!matches.length) return null;
+    const out = {qso_count:0, rf_count:0, network_count:0, total_duration_s:0, first_seen:null, last_seen:null};
+    for (const item of matches) {
+      out.qso_count += Number(item?.qso_count) || 0;
+      out.rf_count += Number(item?.rf_count) || 0;
+      out.network_count += Number(item?.network_count) || 0;
+      out.total_duration_s += Number(item?.total_duration_s) || 0;
+      const first = Number(item?.first_seen) || 0;
+      const last = Number(item?.last_seen) || 0;
+      if (first && (!out.first_seen || first < out.first_seen)) out.first_seen = first;
+      if (last >= (out.last_seen || 0)) {
+        out.last_seen = last || out.last_seen;
+        out.last_destination = item?.last_destination;
+        out.last_group = !!item?.last_group;
+        out.last_path = item?.last_path || '';
+        out.last_slot = item?.last_slot;
+      }
+    }
+    return out.qso_count ? out : null;
+  }
+
+  function locationLabel(row) {
+    const parts = [row?.city, row?.state, row?.country].map(x => String(x || '').trim()).filter(Boolean);
+    return parts.join(', ');
+  }
+
+  function renderSearch(rows, response) {
     const results = $('lookupResults');
     if (!rows.length) {
       results.innerHTML = '<div class="empty">No matching station found.</div>';
       return;
     }
-    results.innerHTML = rows.map(row => `
-      <article class="result-row">
-        <div><b>${esc(row.callsign || 'Unknown')}</b><span>DMR ID ${esc(row.dmr_id ?? '—')}</span></div>
-        <span class="source-tag">RADIOID</span>
-      </article>`).join('');
+    results.innerHTML = rows.map(row => {
+      const obs = observationsFor(row, response);
+      const location = locationLabel(row);
+      const name = String(row?.name || '').trim();
+      const lastDest = destinationFromObservation(obs);
+      const history = obs
+        ? `<div class="history-grid">
+            <div><span>FIRST SEEN</span><b>${esc(dateTime(obs.first_seen))}</b></div>
+            <div><span>LAST HEARD</span><b>${esc(age(obs.last_seen))}</b></div>
+            <div><span>QSOs</span><b>${esc(obs.qso_count)}</b></div>
+            <div><span>PATHS</span><b>${esc(`${obs.rf_count} RF · ${obs.network_count} NET`)}</b></div>
+          </div>
+          ${lastDest ? `<div class="last-route">Last: <b>${esc(lastDest)}</b>${obs.last_path ? ` · ${esc(obs.last_path)}` : ''}${obs.last_slot ? ` · Slot ${esc(obs.last_slot)}` : ''}</div>` : ''}`
+        : '<div class="station-unseen">No completed QSOs observed by this hotspot yet.</div>';
+      return `<article class="result-card">
+        <div class="result-top">
+          <div class="station-id"><b>${esc(row.callsign || 'Unknown')}</b><span>DMR ID ${esc(row.dmr_id ?? '—')}</span></div>
+          <span class="source-tag">RADIOID</span>
+        </div>
+        ${(name || location) ? `<div class="station-profile">${name ? `<b>${esc(name)}</b>` : ''}${location ? `<span>${esc(location)}</span>` : ''}</div>` : ''}
+        ${history}
+      </article>`;
+    }).join('');
   }
 
   function setLookupState(state, text) {
@@ -242,7 +316,7 @@
         const ident = Number(row?.dmr_id);
         if (Number.isInteger(ident) && ident > 0) known.set(ident, row?.callsign ? String(row.callsign).toUpperCase() : '');
       }
-      renderSearch(rows);
+      renderSearch(rows, response);
       setLookupState(rows.length ? 'good' : 'idle', lookupSummary(rows));
     } catch (error) {
       results.innerHTML = '<div class="empty error-box">Unable to complete lookup.</div>';
@@ -268,6 +342,29 @@
     void search(query);
   }
 
+  function applyObservedState(collapsed) {
+    observedCollapsed = !!collapsed;
+    $('observedPanel').classList.toggle('collapsed', observedCollapsed);
+    $('observedBody').hidden = observedCollapsed;
+    $('observedToggle').setAttribute('aria-expanded', String(!observedCollapsed));
+    $('observedToggleLabel').textContent = observedCollapsed ? 'SHOW' : 'HIDE';
+  }
+
+  async function loadObservedState() {
+    try {
+      const stored = await window.ywdPlugin.getPreference('observed-collapsed');
+      if (stored?.found) applyObservedState(stored.value === true);
+    } catch (_) {
+      applyObservedState(false);
+    }
+  }
+
+  async function toggleObserved() {
+    applyObservedState(!observedCollapsed);
+    try { await window.ywdPlugin.setPreference('observed-collapsed', observedCollapsed); }
+    catch (_) {}
+  }
+
   $('lookupButton').addEventListener('click', runLookup);
   $('lookupInput').addEventListener('keydown', event => {
     if (event.key !== 'Enter') return;
@@ -275,6 +372,7 @@
     runLookup();
   });
   $('refreshButton').addEventListener('click', () => void refresh());
+  $('observedToggle').addEventListener('click', () => void toggleObserved());
 
   async function init() {
     try {
@@ -285,6 +383,7 @@
         refresh_seconds: number(saved?.refresh_seconds, 4, 2, 30),
         recent_limit: number(saved?.recent_limit, 15, 5, 30),
       };
+      await loadObservedState();
       await refresh();
       if (config.auto_refresh) timer = setInterval(refresh, config.refresh_seconds * 1000);
     } catch (error) {
