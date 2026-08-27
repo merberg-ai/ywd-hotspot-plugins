@@ -26,10 +26,10 @@
           <div><span class="kicker">DIRECTORY</span><h2>Find a station</h2></div>
           <div id="directoryStatus" class="meta">Local RadioID directory</div>
         </div>
-        <form id="lookupForm" class="lookup-form">
+        <div id="lookupControls" class="lookup-form">
           <input id="lookupInput" type="text" maxlength="32" autocomplete="off" spellcheck="false" placeholder="Callsign or DMR ID" aria-label="Callsign or DMR ID">
-          <button id="lookupButton" type="submit"><span class="lookup-spinner" aria-hidden="true"></span><span id="lookupButtonLabel">LOOK UP</span></button>
-        </form>
+          <button id="lookupButton" type="button"><span class="lookup-spinner" aria-hidden="true"></span><span id="lookupButtonLabel">LOOK UP</span></button>
+        </div>
         <div id="lookupMessage" class="hint lookup-status" role="status" aria-live="polite">Try a callsign such as KJ6YWD or a numeric DMR ID.</div>
         <div id="lookupResults" class="results"></div>
       </section>
@@ -50,7 +50,7 @@
         <div id="activityRows" class="activity-list"><div class="empty">Waiting for activity…</div></div>
       </section>
 
-      <footer>Phase 1 uses the hotspot's existing local DMR ID database. No arbitrary network access is granted to this plugin.</footer>
+      <footer>Contact Intelligence 0.1.0-alpha3 · local hotspot DMR directory · no arbitrary network access.</footer>
     </main>`;
 
   const $ = id => document.getElementById(id);
@@ -224,7 +224,7 @@
   }
 
   function nextPaint() {
-    return new Promise(resolve => requestAnimationFrame(() => resolve()));
+    return new Promise(resolve => setTimeout(resolve, 0));
   }
 
   async function search(query) {
@@ -240,8 +240,6 @@
       setLookupState('busy', `Searching the local RadioID directory… ${seconds}s`);
     }, 1000);
 
-    // Guarantee at least one paint with the busy state visible before the
-    // MessageChannel request begins. This matters on slower mobile browsers.
     await nextPaint();
     try {
       const response = await window.ywdPlugin.searchDmrDirectory(query, {limit:15});
@@ -264,18 +262,24 @@
       $('lookupButton').disabled = false;
       $('lookupInput').disabled = false;
       $('lookupButtonLabel').textContent = 'LOOK UP';
-      $('lookupInput').focus({preventScroll:true});
+      try { $('lookupInput').focus({preventScroll:true}); } catch (_) {}
     }
   }
 
-  $('lookupForm').addEventListener('submit', event => {
-    event.preventDefault();
+  function runLookup() {
     const query = $('lookupInput').value.trim();
     if (!query) {
       setLookupState('bad', 'Enter a callsign or numeric DMR ID first.');
       return;
     }
     void search(query);
+  }
+
+  $('lookupButton').addEventListener('click', runLookup);
+  $('lookupInput').addEventListener('keydown', event => {
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    runLookup();
   });
   $('refreshButton').addEventListener('click', () => void refresh());
 
