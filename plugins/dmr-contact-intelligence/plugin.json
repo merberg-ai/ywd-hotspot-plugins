@@ -2,7 +2,7 @@
   "api": 1,
   "id": "dmr-contact-intelligence",
   "name": "DMR Contact Intelligence",
-  "version": "0.1.0-alpha5",
+  "version": "0.1.0-alpha6",
   "description": "Read-only DMR station directory, local observation history, and recent-activity enrichment.",
   "trust": "experimental",
   "kind": "ui",
