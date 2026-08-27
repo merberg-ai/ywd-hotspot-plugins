@@ -1,0 +1,30 @@
+{
+  "schema": 1,
+  "fields": [
+    {
+      "key": "auto_refresh",
+      "type": "boolean",
+      "label": "Auto-refresh activity",
+      "default": true,
+      "help": "Refresh recent DMR activity while the Contacts plugin page is open."
+    },
+    {
+      "key": "refresh_seconds",
+      "type": "integer",
+      "label": "Refresh interval (seconds)",
+      "min": 2,
+      "max": 30,
+      "default": 4,
+      "help": "How often the open plugin page requests the bounded read-only activity snapshot."
+    },
+    {
+      "key": "recent_limit",
+      "type": "integer",
+      "label": "Recent activity rows",
+      "min": 5,
+      "max": 30,
+      "default": 15,
+      "help": "Maximum recent DMR activity rows shown in the plugin."
+    }
+  ]
+}

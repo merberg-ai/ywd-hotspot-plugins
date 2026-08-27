@@ -1,0 +1,25 @@
+{
+  "api": 1,
+  "id": "dmr-contact-intelligence",
+  "name": "DMR Contact Intelligence",
+  "version": "0.1.0-alpha1",
+  "description": "Read-only DMR callsign lookup and recent-activity enrichment using the hotspot's local directory and trusted activity feed.",
+  "trust": "experimental",
+  "kind": "ui",
+  "provider": "browser-ui",
+  "capabilities": [
+    "ui:section",
+    "read:dmr-activity",
+    "read:dmr-directory"
+  ],
+  "rf_mode": false,
+  "config_schema": "config.schema.json",
+  "dependencies": [],
+  "hardware": [],
+  "ui": {
+    "api": 1,
+    "label": "CONTACTS",
+    "script": "ui.js",
+    "style": "ui.css"
+  }
+}
