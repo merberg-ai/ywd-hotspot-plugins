@@ -16,7 +16,15 @@ Experimental YWD-Hotspot browser UI plugin for local DMR identity lookup and rec
 - optional auto-refresh only while the plugin iframe is open;
 - no RF authority, modem access, arbitrary dashboard fetch, arbitrary network access, or Pi-side plugin service.
 
-The current RC3 DMR ID file stores DMR ID and callsign. Richer directory fields such as name/city/state/country and persistent first-seen/last-seen/QSO observations remain the next storage/update phase.
+The current RC3 DMR ID file stores DMR ID and callsign.
+
+## Next planned phase
+
+The next Contact Intelligence release should include richer station identity data and observation history work, plus UI polish based on Alpha 4 testing.
+
+Planned UI behavior now also includes a collapsible **Observed / Recent Activity** card. Its expanded/collapsed state should persist per browser rather than being written into hotspot configuration. Because Plugin UI intentionally runs in an opaque-origin sandbox, the plugin should not depend on iframe `localStorage`; use a small generic parent-side browser-preference bridge, namespaced by plugin ID, so existing and future plugins can safely persist lightweight UI preferences without gaining broader dashboard or storage access.
+
+Richer directory fields such as name/city/state/country and persistent first-seen/last-seen/QSO observations remain part of the next storage/update design phase.
 
 ## Required core capabilities
 
