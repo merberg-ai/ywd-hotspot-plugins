@@ -2,7 +2,7 @@
   "api": 1,
   "id": "dmr-contact-intelligence",
   "name": "DMR Contact Intelligence",
-  "version": "0.1.0-alpha2",
+  "version": "0.1.0-alpha3",
   "description": "Read-only DMR callsign lookup and recent-activity enrichment using the hotspot's local directory and trusted activity feed.",
   "trust": "experimental",
   "kind": "ui",
