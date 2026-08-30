@@ -12,6 +12,7 @@ The Alpha 6 source baseline retained for rollback/audit is:
 
 ```text
 325ec8efb48a5cfdc009e24a3bc65575439d1513
+checkpoint-dev-plugins-contact-intelligence-alpha6-proven
 ```
 
 ## RX Monitor
@@ -31,9 +32,10 @@ b3c3e741f83e9f1204a9eb36027f84e71f0ce7e3
 
 Checkpoint branches are kept only when they still provide durable rollback or architectural audit value. Intermediate `needs-testing`, failed, superseded and one-off observation labels are intentionally pruned once later evidence makes them redundant.
 
-The retained RX/vocoder checkpoints are:
+The retained plugin checkpoints include:
 
 ```text
+checkpoint-dev-plugins-contact-intelligence-alpha6-proven
 checkpoint-dev-plugins-pre-vocoder-boundary
 checkpoint-dev-plugins-phase3f-alpha10-vocoder-boundary-proven
 checkpoint-dev-plugins-phase3h-alpha15-pre-real-vocoder
@@ -43,7 +45,7 @@ checkpoint-dev-plugins-phase3j-pre-stream-plugin
 checkpoint-dev-plugins-phase3j-alpha19-proven
 ```
 
-The final selected package checkpoint is:
+The final selected RX Monitor package checkpoint is:
 
 ```text
 checkpoint-dev-plugins-phase3j-alpha19-proven
