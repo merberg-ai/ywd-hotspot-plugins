@@ -1,8 +1,12 @@
 'use strict';
 (() => {
   const root = document.getElementById('ywd-plugin-root');
-  const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot',"'":'&#39;'}[c]));
   const known = new Map();
+  const TGIF_RF_BASE = 5_000_000;
+  const TGIF_RF_MIN = TGIF_RF_BASE + 1;
+  const TGIF_RF_MAX = TGIF_RF_BASE + 999_999;
+  const DIRECTORY_STALE_SECONDS = 14 * 24 * 60 * 60;
   let config = {auto_refresh:true, refresh_seconds:4, recent_limit:15};
   let timer = null;
   let directoryMeta = null;
@@ -10,6 +14,7 @@
   let lookupBusy = false;
   let lookupTicker = null;
   let observedCollapsed = false;
+  let hasActivitySnapshot = false;
 
   root.innerHTML = `
     <main class="shell">
@@ -19,20 +24,20 @@
           <h1>Contact Intelligence</h1>
           <p>Search the DMR directory and see the activity your hotspot is hearing.</p>
         </div>
-        <span id="bridgeStatus" class="pill pending">CONNECTING</span>
+        <span id="bridgeStatus" class="pill pending" role="status" aria-live="polite">CONNECTING</span>
       </header>
 
       <section id="lookupPanel" class="panel lookup-panel">
         <div class="section-head">
           <div><span class="kicker">DIRECTORY</span><h2>Find a station</h2></div>
-          <div id="directoryStatus" class="meta">RadioID directory</div>
+          <div id="directoryStatus" class="meta directory-state">RadioID directory</div>
         </div>
-        <div id="lookupControls" class="lookup-form">
-          <input id="lookupInput" type="text" maxlength="32" autocomplete="off" spellcheck="false" placeholder="Callsign or DMR ID" aria-label="Callsign or DMR ID">
+        <div id="lookupControls" class="lookup-form" aria-busy="false">
+          <input id="lookupInput" type="text" maxlength="32" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="Callsign or DMR ID" aria-label="Callsign or DMR ID">
           <button id="lookupButton" type="button"><span class="lookup-spinner" aria-hidden="true"></span><span id="lookupButtonLabel">LOOK UP</span></button>
         </div>
         <div id="lookupMessage" class="hint lookup-status" role="status" aria-live="polite">Search by callsign or numeric DMR ID.</div>
-        <div id="lookupResults" class="results"></div>
+        <div id="lookupResults" class="results" aria-live="polite"></div>
       </section>
 
       <section class="panel">
@@ -146,18 +151,42 @@
   function stationControl(who, extraClass = '') {
     const query = stationQuery(who);
     if (!query) return `<b>${esc(who?.primary || 'Unknown')}</b>`;
-    return `<button type="button" class="station-link ${esc(extraClass)}" data-station-query="${esc(query)}" data-station-label="${esc(stationLabel(who))}">${esc(who?.primary || query)}</button>`;
+    const label = stationLabel(who) || query;
+    return `<button type="button" class="station-link ${esc(extraClass)}" data-station-query="${esc(query)}" data-station-label="${esc(label)}" aria-label="Open station profile for ${esc(label)}">${esc(who?.primary || query)}</button>`;
   }
 
-  function destination(event) {
-    const d = event?.destination || {};
-    const text = String(d.display || d.id || 'Unknown');
-    return d.group ? `TG ${text}` : `ID ${text}`;
+  function destinationDetails(destination) {
+    const d = destination && typeof destination === 'object' ? destination : {};
+    const ident = Number(d.id);
+    const display = String(d.display || (Number.isInteger(ident) ? ident : '') || 'Unknown');
+    if (d.group && Number.isInteger(ident) && ident >= TGIF_RF_MIN && ident <= TGIF_RF_MAX) {
+      return {primary:`TGIF · TG ${ident - TGIF_RF_BASE}`, raw:`RF TG ${ident}`};
+    }
+    return {primary:d.group ? `TG ${display}` : `ID ${display}`, raw:''};
   }
 
   function destinationFromObservation(obs) {
-    if (!obs || obs.last_destination === null || obs.last_destination === undefined) return '';
-    return obs.last_group ? `TG ${obs.last_destination}` : `ID ${obs.last_destination}`;
+    if (!obs || obs.last_destination === null || obs.last_destination === undefined) return null;
+    const ident = Number(obs.last_destination);
+    if (obs.last_group && Number.isInteger(ident) && ident >= TGIF_RF_MIN && ident <= TGIF_RF_MAX) {
+      return {primary:`TGIF · TG ${ident - TGIF_RF_BASE}`, raw:`RF TG ${ident}`};
+    }
+    return {primary:obs.last_group ? `TG ${obs.last_destination}` : `ID ${obs.last_destination}`, raw:''};
+  }
+
+  function routeMeta(details, event) {
+    const parts = [];
+    if (details?.raw) parts.push(details.raw);
+    if (event?.path) parts.push(String(event.path));
+    if (event?.slot !== null && event?.slot !== undefined && event?.slot !== '') parts.push(`Slot ${event.slot}`);
+    return parts.join(' · ');
+  }
+
+  function setBridgeState(className, label, title = '') {
+    const pill = $('bridgeStatus');
+    pill.className = `pill ${className}`;
+    pill.textContent = label;
+    pill.title = title;
   }
 
   function renderCurrent(event) {
@@ -168,11 +197,12 @@
       return;
     }
     const who = identity(event);
+    const dest = destinationDetails(event?.destination);
     box.className = `current active ${String(event.path || '').toLowerCase()}`;
     box.innerHTML = `
       <div class="signal-dot"></div>
       <div class="current-main">${stationControl(who, 'current-station-link')}<span>${esc(who.secondary)}</span></div>
-      <div class="current-dest"><b>${esc(destination(event))}</b><span>${esc(event.path || '')} · Slot ${esc(event.slot ?? '—')}</span></div>`;
+      <div class="current-dest"><b>${esc(dest.primary)}</b><span>${esc(routeMeta(dest, event))}</span></div>`;
   }
 
   function renderRows(rows) {
@@ -183,12 +213,14 @@
     }
     list.innerHTML = rows.map(event => {
       const who = identity(event);
+      const dest = destinationDetails(event?.destination);
       const metric = event?.path === 'RF' && Number.isFinite(Number(event?.ber_pct))
         ? `BER ${Number(event.ber_pct).toFixed(1)}%`
         : Number.isFinite(Number(event?.packet_loss_pct)) ? `LOSS ${Number(event.packet_loss_pct).toFixed(0)}%` : '';
+      const detail = [dest.raw, event?.path || 'DMR', metric || event?.status || ''].filter(Boolean).join(' · ');
       return `<article class="activity-row">
         <div class="who">${stationControl(who)}<span>${esc(who.secondary)}</span></div>
-        <div class="where"><b>${esc(destination(event))}</b><span>${esc(event.path || 'DMR')} · ${esc(metric || event.status || '')}</span></div>
+        <div class="where"><b>${esc(dest.primary)}</b><span>${esc(detail)}</span></div>
         <div class="when"><b>${esc(duration(event))}</b><span>${esc(timeLabel(event.started_at))}</span></div>
       </article>`;
     }).join('');
@@ -196,12 +228,31 @@
 
   function updateDirectoryMeta(meta) {
     if (meta && typeof meta === 'object') directoryMeta = meta;
+    const status = $('directoryStatus');
     const m = directoryMeta;
-    if (!m) return;
-    const text = m.present === false
-      ? 'Directory unavailable'
-      : `${m.source || 'Directory'}${m.updated_at ? ` · updated ${age(m.updated_at)}` : ''}`;
-    $('directoryStatus').textContent = text;
+    status.className = 'meta directory-state';
+    status.removeAttribute('title');
+    if (!m) {
+      status.textContent = 'RadioID directory';
+      return;
+    }
+    if (m.present === false) {
+      status.textContent = 'Directory unavailable';
+      status.classList.add('unavailable');
+      status.title = 'The hotspot local DMR directory is not available.';
+      return;
+    }
+    const updated = Number(m.updated_at);
+    const ageSeconds = Number.isFinite(updated) && updated > 0 ? Math.max(0, Date.now() / 1000 - updated) : null;
+    const stale = ageSeconds !== null && ageSeconds > DIRECTORY_STALE_SECONDS;
+    const bits = [String(m.source || 'Directory')];
+    if (stale) bits.push('stale');
+    if (updated > 0) bits.push(`updated ${age(updated)}`);
+    status.textContent = bits.join(' · ');
+    if (stale) {
+      status.classList.add('stale');
+      status.title = 'The local directory is older than two weeks. Lookups still use the cached data.';
+    }
   }
 
   async function resolveRows(activity) {
@@ -224,6 +275,7 @@
     if (busy) return;
     busy = true;
     $('refreshButton').disabled = true;
+    $('refreshButton').setAttribute('aria-busy', 'true');
     try {
       const activity = await window.ywdPlugin.readDmrActivity({limit:config.recent_limit});
       await resolveRows(activity);
@@ -231,17 +283,28 @@
       renderCurrent(activity?.current || {});
       renderRows(rows);
       const updated = activity?.updated_at ? `updated ${age(activity.updated_at)}` : 'updated now';
+      $('updatedAt').className = 'meta';
       $('updatedAt').textContent = `${rows.length} recent · ${updated}`;
-      $('bridgeStatus').className = 'pill good';
-      $('bridgeStatus').textContent = 'LIVE';
+      hasActivitySnapshot = true;
+      setBridgeState('good', 'LIVE');
     } catch (error) {
-      $('bridgeStatus').className = 'pill bad';
-      $('bridgeStatus').textContent = 'ERROR';
-      $('currentActivity').className = 'current idle';
-      $('currentActivity').textContent = String(error?.message || error);
+      console.warn('Contact Intelligence activity refresh failed:', error);
+      if (hasActivitySnapshot) {
+        setBridgeState('stale', 'STALE', 'Latest activity refresh failed; showing the last successful snapshot.');
+        $('updatedAt').className = 'meta refresh-error';
+        $('updatedAt').textContent = 'refresh failed · showing last snapshot';
+      } else {
+        setBridgeState('bad', 'OFFLINE', 'Activity data is currently unavailable.');
+        $('currentActivity').className = 'current idle error';
+        $('currentActivity').innerHTML = '<div class="signal-dot"></div><div><b>Activity unavailable</b><span>Could not read the hotspot activity feed.</span></div>';
+        $('activityRows').innerHTML = '<div class="empty error-box">Recent activity is unavailable. Try REFRESH again.</div>';
+        $('updatedAt').className = 'meta refresh-error';
+        $('updatedAt').textContent = 'activity unavailable';
+      }
     } finally {
       busy = false;
       $('refreshButton').disabled = false;
+      $('refreshButton').setAttribute('aria-busy', 'false');
     }
   }
 
@@ -291,6 +354,10 @@
       const location = locationLabel(row);
       const name = String(row?.name || '').trim();
       const lastDest = destinationFromObservation(obs);
+      const lastSlot = obs && obs.last_slot !== null && obs.last_slot !== undefined && obs.last_slot !== '' ? `Slot ${obs.last_slot}` : '';
+      const lastRoute = lastDest
+        ? [lastDest.primary, lastDest.raw, obs.last_path || '', lastSlot].filter(Boolean).join(' · ')
+        : '';
       const history = obs
         ? `<div class="history-grid">
             <div><span>FIRST SEEN</span><b class="history-time" title="${esc(dateTime(obs.first_seen))}">${esc(compactDateTime(obs.first_seen))}</b></div>
@@ -299,7 +366,7 @@
             <div><span>AIRTIME</span><b>${esc(airtime(obs.total_duration_s))}</b></div>
             <div><span>PATHS</span><b>${esc(`${obs.rf_count} RF · ${obs.network_count} NET`)}</b></div>
           </div>
-          ${lastDest ? `<div class="last-route">Last: <b>${esc(lastDest)}</b>${obs.last_path ? ` · ${esc(obs.last_path)}` : ''}${obs.last_slot ? ` · Slot ${esc(obs.last_slot)}` : ''}</div>` : ''}`
+          ${lastRoute ? `<div class="last-route">Last: <b>${esc(lastRoute)}</b></div>` : ''}`
         : '<div class="station-unseen">No completed QSOs observed by this hotspot yet.</div>';
       return `<article class="result-card">
         <div class="result-top">
@@ -315,12 +382,25 @@
   function setLookupState(state, text) {
     const message = $('lookupMessage');
     const button = $('lookupButton');
+    const isBusy = state === 'busy';
     message.className = `hint lookup-status ${state || ''}`.trim();
     if (text !== undefined) message.textContent = String(text);
-    button.classList.toggle('busy', state === 'busy');
-    button.disabled = state === 'busy';
-    $('lookupInput').disabled = state === 'busy';
-    $('lookupButtonLabel').textContent = state === 'busy' ? 'LOOKING UP…' : 'LOOK UP';
+    button.classList.toggle('busy', isBusy);
+    button.disabled = isBusy;
+    button.setAttribute('aria-busy', String(isBusy));
+    $('lookupControls').setAttribute('aria-busy', String(isBusy));
+    $('lookupInput').disabled = isBusy;
+    $('lookupButtonLabel').textContent = isBusy ? 'LOOKING UP…' : 'LOOK UP';
+  }
+
+  function releaseLookupControls() {
+    const button = $('lookupButton');
+    button.classList.remove('busy');
+    button.disabled = false;
+    button.setAttribute('aria-busy', 'false');
+    $('lookupControls').setAttribute('aria-busy', 'false');
+    $('lookupInput').disabled = false;
+    $('lookupButtonLabel').textContent = 'LOOK UP';
   }
 
   function lookupSummary(rows) {
@@ -357,16 +437,14 @@
       renderSearch(rows, response);
       setLookupState(rows.length ? 'good' : 'idle', lookupSummary(rows));
     } catch (error) {
-      results.innerHTML = '<div class="empty error-box">Unable to complete lookup.</div>';
-      setLookupState('bad', `Lookup error: ${String(error?.message || error)}`);
+      console.warn('Contact Intelligence lookup failed:', error);
+      results.innerHTML = '<div class="empty error-box">Unable to complete lookup. The local directory may be unavailable.</div>';
+      setLookupState('bad', 'Lookup unavailable. Try again.');
     } finally {
       clearInterval(lookupTicker);
       lookupTicker = null;
       lookupBusy = false;
-      $('lookupButton').classList.remove('busy');
-      $('lookupButton').disabled = false;
-      $('lookupInput').disabled = false;
-      $('lookupButtonLabel').textContent = 'LOOK UP';
+      releaseLookupControls();
       try { $('lookupInput').focus({preventScroll:true}); } catch (_) {}
     }
   }
@@ -375,6 +453,7 @@
     const query = $('lookupInput').value.trim();
     if (!query) {
       setLookupState('bad', 'Enter a callsign or numeric DMR ID first.');
+      try { $('lookupInput').focus({preventScroll:true}); } catch (_) {}
       return;
     }
     void search(query);
@@ -385,7 +464,8 @@
     const label = String(target?.dataset?.stationLabel || query).trim();
     if (!query || lookupBusy) return;
     $('lookupInput').value = label || query;
-    try { $('lookupPanel').scrollIntoView({behavior:'smooth', block:'start'}); } catch (_) {}
+    const reducedMotion = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+    try { $('lookupPanel').scrollIntoView({behavior:reducedMotion ? 'auto' : 'smooth', block:'start'}); } catch (_) {}
     void search(query);
   }
 
@@ -432,20 +512,28 @@
   async function init() {
     try {
       await window.ywdPlugin.ready;
+    } catch (error) {
+      console.warn('Contact Intelligence bridge failed:', error);
+      setBridgeState('bad', 'OFFLINE', 'The plugin bridge is unavailable.');
+      $('currentActivity').className = 'current idle error';
+      $('currentActivity').innerHTML = '<div class="signal-dot"></div><div><b>Plugin unavailable</b><span>The trusted dashboard bridge could not be opened.</span></div>';
+      return;
+    }
+
+    try {
       const saved = await window.ywdPlugin.getConfig();
       config = {
         auto_refresh: saved?.auto_refresh !== false,
         refresh_seconds: number(saved?.refresh_seconds, 4, 2, 30),
         recent_limit: number(saved?.recent_limit, 15, 5, 30),
       };
-      await loadObservedState();
-      await refresh();
-      if (config.auto_refresh) timer = setInterval(refresh, config.refresh_seconds * 1000);
     } catch (error) {
-      $('bridgeStatus').className = 'pill bad';
-      $('bridgeStatus').textContent = 'OFFLINE';
-      $('currentActivity').textContent = String(error?.message || error);
+      console.warn('Contact Intelligence config read failed; using defaults:', error);
     }
+
+    await loadObservedState();
+    await refresh();
+    if (config.auto_refresh) timer = setInterval(refresh, config.refresh_seconds * 1000);
   }
 
   window.addEventListener('pagehide', () => {
