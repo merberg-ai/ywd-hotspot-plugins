@@ -80,7 +80,7 @@ def main() -> int:
     for marker in (
         "Release 0.1.0",
         "hardware-proven Alpha 6",
-        "uploaded trust class",
+        "trust: experimental",
         "read:dmr-activity",
         "read:dmr-directory",
     ):
