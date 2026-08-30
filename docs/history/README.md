@@ -4,6 +4,16 @@
 
 Current build/development instructions live directly under `docs/`. This directory keeps historical observations and condensed development history so old proof work remains understandable without cluttering the active workflow.
 
+## DMR Contact Intelligence
+
+- **[Alpha 6 hardware pass](dmr-contact-intelligence-alpha6-hardware-pass.md)** — main-hotspot physical acceptance record for the final pre-release baseline, including the verified package SHA256 and unchanged core target.
+
+The Alpha 6 source baseline retained for rollback/audit is:
+
+```text
+325ec8efb48a5cfdc009e24a3bc65575439d1513
+```
+
 ## RX Monitor
 
 - **[RX Monitor Development History](RX-MONITOR-DEVELOPMENT.md)** — Phase 3C through the selected Phase 3J/Alpha19 architecture.
