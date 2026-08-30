@@ -29,7 +29,10 @@ def main() -> int:
     assert manifest.get("id") == "dmr-contact-intelligence"
     assert manifest.get("name") == "DMR Contact Intelligence"
     assert manifest.get("version") == "0.1.0"
-    assert manifest.get("trust") == "first-party"
+    # YWD-Hotspot archive v1 intentionally requires every uploaded package to
+    # remain in the experimental trust class. Publisher authenticity is carried
+    # separately by the trusted Ed25519 package signature/key id.
+    assert manifest.get("trust") == "experimental"
     assert manifest.get("kind") == "ui"
     assert manifest.get("provider") == "browser-ui"
     assert manifest.get("capabilities") == expected_caps
@@ -77,6 +80,7 @@ def main() -> int:
     for marker in (
         "Release 0.1.0",
         "hardware-proven Alpha 6",
+        "uploaded trust class",
         "read:dmr-activity",
         "read:dmr-directory",
     ):
