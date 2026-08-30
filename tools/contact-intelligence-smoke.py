@@ -48,6 +48,7 @@ def main() -> int:
     readme = (PLUGIN / "README.md").read_text(encoding="utf-8")
 
     for marker in (
+        "&quot;",
         "TGIF_RF_BASE = 5_000_000",
         "TGIF · TG",
         "RF TG ${ident}",
