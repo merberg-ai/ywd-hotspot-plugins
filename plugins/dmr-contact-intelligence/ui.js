@@ -1,7 +1,7 @@
 'use strict';
 (() => {
   const root = document.getElementById('ywd-plugin-root');
-  const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot',"'":'&#39;'}[c]));
+  const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const known = new Map();
   const TGIF_RF_BASE = 5_000_000;
   const TGIF_RF_MIN = TGIF_RF_BASE + 1;
