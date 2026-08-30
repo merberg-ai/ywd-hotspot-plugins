@@ -1,6 +1,6 @@
 # DMR Contact Intelligence
 
-First-party signed YWD-Hotspot browser UI plugin for local DMR identity lookup, live/recent activity enrichment, and hotspot-observed station history.
+Signed YWD-Hotspot browser UI plugin for local DMR identity lookup, live/recent activity enrichment, and hotspot-observed station history.
 
 ## Release 0.1.0
 
@@ -25,6 +25,18 @@ Features:
 - bounded, sanitized read-only DMR activity from trusted core;
 - optional auto-refresh only while the plugin iframe is open;
 - no RF authority, modem access, arbitrary dashboard fetch, arbitrary network access, or Pi-side plugin service.
+
+## Package trust and signing
+
+YWD-Hotspot `.ywdplugin` archive v1 requires all **uploaded** plugins to declare the `experimental` trust class. That field describes the plugin's runtime/package trust boundary; it is not the publisher identity or release maturity indicator.
+
+DMR Contact Intelligence 0.1.0 therefore intentionally keeps:
+
+```text
+trust: experimental
+```
+
+Publisher authenticity is enforced separately by the package's trusted Ed25519 signature. Official builds are signed with the configured KJ6YWD publisher key and the hotspot verifies that signature before an uploaded UI package can be reviewed or installed.
 
 ## Proven lineage
 
