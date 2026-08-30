@@ -4,7 +4,7 @@
   "name": "DMR Contact Intelligence",
   "version": "0.1.0",
   "description": "Read-only DMR station directory, local observation history, and recent-activity enrichment.",
-  "trust": "first-party",
+  "trust": "experimental",
   "kind": "ui",
   "provider": "browser-ui",
   "capabilities": [
